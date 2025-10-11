@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { pipeline } from '@/lib/redis';
-import { generateEmbedding, generateResponse } from '@/lib/openai';
+import { generateEmbedding, generateStreamingResponse } from '@/lib/openai';
 import { searchSimilar } from '@/lib/pinecone';
 import { searchEntities, getEntityRelationships } from '@/lib/neo4j';
 import { getUserDocuments } from '@/lib/appwrite';
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const responseStream = await generateResponse(query, context, conversationHistory);
+    const responseStream = await generateStreamingResponse(query, context, conversationHistory);
     
     const sessionId = `${user.id}_${Date.now()}`;
     let responseText = '';
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
             ...vectorResults.map(r => ({
               type: 'vector',
               fileName: r.metadata?.fileName,
-              content: r.metadata?.content?.slice(0, 200) + '...',
+              content: typeof r.metadata?.content === 'string' ? r.metadata.content.slice(0, 200) + '...' : '',
               score: r.score
             })),
             ...graphResults.map(r => ({

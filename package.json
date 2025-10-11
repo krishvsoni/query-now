@@ -9,20 +9,29 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@kinde-oss/kinde-auth-nextjs": "^2.9.2",
     "@pinecone-database/pinecone": "^6.1.2",
     "@types/multer": "^2.0.0",
     "@types/uuid": "^10.0.0",
+    "js-tiktoken": "^1.0.21",
+    "lucide-react": "^0.545.0",
+    "mammoth": "^1.11.0",
     "multer": "^2.0.2",
     "neo4j-driver": "^6.0.0",
     "next": "15.5.4",
     "node-appwrite": "^20.2.1",
     "openai": "^6.3.0",
+    "pdf-parse": "^2.2.8",
+    "pdf2pic": "^3.2.0",
     "pinecone": "^0.1.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-dropzone": "^14.3.8",
+    "react-force-graph-2d": "^1.29.0",
     "redis": "^5.8.3",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Query Now - AI-Powered Document Chat",
-  description: "Upload documents and chat with your knowledge base using AI-powered search",
+  description: "Upload documents and chat with your knowledge base using AI-powered search and knowledge graphs",
 };
 
 export default function RootLayout({
@@ -25,9 +25,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 min-h-screen`}
       >
-        {children}
+        <div className="min-h-screen">
+          {children}
+        </div>
       </body>
     </html>
   );
