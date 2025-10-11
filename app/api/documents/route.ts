@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserDetails } from '@/lib/auth';
 import { listStorageFiles, uploadDocument, getUserDocuments, saveDocumentMetadata } from '@/lib/appwrite';
 import { documentProcessor } from '@/lib/document-processor';
-import { pipeline } from '@/lib/redis';
+import { DocumentPipeline } from '@/lib/redis';
 
 export async function GET(request: NextRequest) {
   try {
@@ -84,12 +84,16 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    console.log(`Processing upload for user: ${userDetails.fullName} (${userDetails.email})`);
+    console.log(`File: ${file.name}, Size: ${file.size} bytes, Type: ${file.type}`);
+
     // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
     // Upload to Appwrite with user details
     const uploadResult = await uploadDocument(buffer, file.name, userDetails.id);
+    console.log(`File uploaded to Appwrite: ${uploadResult.fileId}`);
     
     // Save document metadata to database
     const documentMetadata = await saveDocumentMetadata({
@@ -100,7 +104,10 @@ export async function POST(request: NextRequest) {
       processingStage: 'pending'
     });
     
-    // Queue document for processing pipeline (async)
+    // Initialize pipeline and queue document for processing
+    const pipeline = new DocumentPipeline();
+    await pipeline.init();
+    
     await pipeline.queueDocumentIngestion(
       documentMetadata.$id,
       userDetails.id,
@@ -108,12 +115,13 @@ export async function POST(request: NextRequest) {
       uploadResult.filePath
     );
 
+    console.log(`Document queued for processing: ${documentMetadata.$id}`);
+
     // Start comprehensive processing pipeline in background
     // This includes: parsing → embeddings → Pinecone → Neo4j → Redis caching
     setTimeout(async () => {
       try {
-        console.log(`Starting pipeline for user ${userDetails.fullName} (${userDetails.email})`);
-        console.log(`Processing document: ${file.name} (${documentMetadata.$id})`);
+        console.log(`Starting background pipeline for document: ${documentMetadata.$id}`);
         
         await documentProcessor.processDocument(
           documentMetadata.$id,
@@ -127,7 +135,7 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.error('Background processing pipeline error:', error);
       }
-    }, 0);
+    }, 100); // Small delay to ensure response is sent first
 
     return NextResponse.json({
       success: true,
@@ -140,16 +148,36 @@ export async function POST(request: NextRequest) {
         id: documentMetadata.$id,
         fileName: file.name,
         status: 'uploaded',
-        processingStage: 'pending',
+        processingStage: 'queued',
         fileId: uploadResult.fileId,
         uploadedAt: new Date().toISOString()
-      }
+      },
+      message: `Successfully uploaded "${file.name}". Processing pipeline started.`
     });
 
   } catch (error) {
     console.error('Error uploading document:', error);
+    
+    // Return more detailed error information
+    let errorMessage = 'Failed to upload document';
+    let statusCode = 500;
+    
+    if (error instanceof Error) {
+      if (error.message.includes('Unauthorized') || error.message.includes('authentication')) {
+        errorMessage = 'Authentication required. Please log in.';
+        statusCode = 401;
+      } else if (error.message.includes('Appwrite')) {
+        errorMessage = 'Storage service error. Please check Appwrite configuration.';
+      } else if (error.message.includes('Redis')) {
+        errorMessage = 'Queue service error. Please check Redis configuration.';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
     return NextResponse.json({ 
-      error: 'Failed to upload document' 
-    }, { status: 500 });
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error instanceof Error ? error.stack : String(error) : undefined
+    }, { status: statusCode });
   }
 }

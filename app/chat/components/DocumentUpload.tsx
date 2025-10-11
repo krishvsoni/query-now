@@ -39,6 +39,8 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
     onUploadStart?.();
 
     try {
+      console.log('Starting upload for file:', file.name);
+      
       const formData = new FormData();
       formData.append('file', file);
 
@@ -47,23 +49,37 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
         body: formData,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
-      }
-
       const result = await response.json();
       
+      if (!response.ok) {
+        throw new Error(result.error || `Server error: ${response.status}`);
+      }
+
       if (result.success) {
-        setSuccess(`Successfully uploaded "${file.name}". Processing pipeline started.`);
+        console.log('Upload successful:', result);
+        setSuccess(result.message || `Successfully uploaded "${file.name}". Processing pipeline started.`);
         onUploadComplete?.(result.document, result.user);
       } else {
-        throw new Error('Upload completed but response was invalid');
+        throw new Error(result.error || 'Upload completed but response was invalid');
       }
 
     } catch (error) {
       console.error('Upload error:', error);
-      setError(error instanceof Error ? error.message : 'Upload failed');
+      
+      let errorMessage = 'Upload failed';
+      if (error instanceof Error) {
+        if (error.message.includes('Authentication required')) {
+          errorMessage = 'Please log in to upload documents';
+        } else if (error.message.includes('Storage service error')) {
+          errorMessage = 'Storage service unavailable. Please try again later.';
+        } else if (error.message.includes('Queue service error')) {
+          errorMessage = 'Processing queue unavailable. Please try again later.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      setError(errorMessage);
     } finally {
       setUploading(false);
     }

@@ -13,7 +13,6 @@ export class DocumentProcessor {
 
     console.log('Starting document processing pipeline...');
     
-    // Start processing different stages concurrently
     Promise.all([
       this.processIngestionQueue(),
       this.processParsingQueue(),
@@ -50,23 +49,16 @@ export class DocumentProcessor {
   async handleIngestion(job: any) {
     try {
       const { docId, userId, fileName, filePath } = job;
-      
-      // Download and parse document
       const fileId = filePath.split('/')[1];
       const content = await getDocumentContent(fileId);
-      const text = content.toString('utf-8'); // Simple text extraction
-      
-      // Update status
+      const text = content.toString('utf-8');
       await updateDocumentStatus(docId, 'processing', 'parsing');
-      
-      // Move to parsing stage
       await pipeline.moveToNextStage(docId, 'parsing', {
         userId,
         fileName,
         text,
-        summary: await summarizeDocument(text.slice(0, 3000)) // Summarize first part
+        summary: await summarizeDocument(text.slice(0, 3000))
       });
-      
     } catch (error) {
       console.error('Error handling ingestion:', error);
     }
@@ -101,14 +93,8 @@ export class DocumentProcessor {
       const { docId, data } = job;
       const parsedData = JSON.parse(data);
       const { text, userId, fileName, summary } = parsedData;
-      
-      // Chunk the document
       const chunks = chunkText(text);
-      
-      // Update status
       await updateDocumentStatus(docId, 'processing', 'ontology');
-      
-      // Move to ontology generation
       await pipeline.moveToNextStage(docId, 'ontology', {
         userId,
         fileName,
@@ -116,7 +102,6 @@ export class DocumentProcessor {
         summary,
         fullText: text
       });
-      
     } catch (error) {
       console.error('Error handling parsing:', error);
     }
@@ -151,13 +136,10 @@ export class DocumentProcessor {
       const { docId, data } = job;
       const parsedData = JSON.parse(data);
       const { chunks, userId, fileName, summary, fullText } = parsedData;
-      
-      // Extract entities and relationships from each chunk
       const ontologyData = [];
-      
-      for (let i = 0; i < Math.min(chunks.length, 5); i++) { // Process first 5 chunks
+      for (let i = 0; i < Math.min(chunks.length, 5); i++) {
         const chunk = chunks[i];
-        if (chunk.length > 100) { // Only process meaningful chunks
+        if (chunk.length > 100) {
           const extracted = await extractEntitiesAndRelationships(chunk);
           ontologyData.push({
             chunkIndex: i,
@@ -165,11 +147,7 @@ export class DocumentProcessor {
           });
         }
       }
-      
-      // Update status
       await updateDocumentStatus(docId, 'processing', 'embedding');
-      
-      // Move to embedding generation
       await pipeline.moveToNextStage(docId, 'embedding', {
         userId,
         fileName,
@@ -178,7 +156,6 @@ export class DocumentProcessor {
         ontologyData,
         fullText
       });
-      
     } catch (error) {
       console.error('Error handling ontology:', error);
     }
@@ -213,15 +190,10 @@ export class DocumentProcessor {
       const { docId, data } = job;
       const parsedData = JSON.parse(data);
       const { chunks, userId, fileName, summary, ontologyData } = parsedData;
-      
-      // Generate embeddings for chunks
       const embeddedChunks = [];
-      
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const embedding = await generateEmbedding(chunk);
-        
-        // Store in Pinecone
         await storeEmbedding(
           `${docId}_chunk_${i}`,
           embedding,
@@ -233,15 +205,12 @@ export class DocumentProcessor {
             chunk: i
           }
         );
-        
         embeddedChunks.push({
           chunkIndex: i,
           content: chunk,
           embedding
         });
       }
-      
-      // Generate embedding for summary
       const summaryEmbedding = await generateEmbedding(summary);
       await storeEmbedding(
         `${docId}_summary`,
@@ -251,14 +220,10 @@ export class DocumentProcessor {
           documentId: docId,
           fileName,
           content: summary,
-          chunk: -1 // Summary marker
+          chunk: -1
         }
       );
-      
-      // Update status
       await updateDocumentStatus(docId, 'processing', 'graph');
-      
-      // Move to graph storage
       await pipeline.moveToNextStage(docId, 'graph', {
         userId,
         fileName,
@@ -267,7 +232,6 @@ export class DocumentProcessor {
         embeddedChunks,
         summaryEmbedding
       });
-      
     } catch (error) {
       console.error('Error handling embedding:', error);
     }
@@ -302,13 +266,8 @@ export class DocumentProcessor {
       const { docId, data } = job;
       const parsedData = JSON.parse(data);
       const { userId, fileName, summary, ontologyData } = parsedData;
-      
-      // Create document node in Neo4j
       await createUserDocumentNode(userId, docId, fileName, { summary });
-      
-      // Process ontology data
       for (const chunk of ontologyData) {
-        // Create entities
         for (const entity of chunk.entities || []) {
           await createEntity(
             docId,
@@ -321,8 +280,6 @@ export class DocumentProcessor {
             }
           );
         }
-        
-        // Create relationships
         for (const rel of chunk.relationships || []) {
           await createRelationship(
             rel.source,
@@ -332,12 +289,8 @@ export class DocumentProcessor {
           );
         }
       }
-      
-      // Update final status
       await updateDocumentStatus(docId, 'completed', 'completed');
-      
       console.log(`Document ${docId} processing completed`);
-      
     } catch (error) {
       console.error('Error handling graph:', error);
     }
