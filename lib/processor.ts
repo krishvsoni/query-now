@@ -1,5 +1,5 @@
-import { pipeline } from '@/lib/redis';
-import { getDocumentContent, updateDocumentStatus } from '@/lib/appwrite';
+import { pipeline, getRedisClient, updateDocumentStatus } from '@/lib/redis';
+import { getDocumentContent } from '@/lib/appwrite';
 import { generateEmbedding, extractEntitiesAndRelationships, chunkText, summarizeDocument } from '@/lib/openai';
 import { storeEmbedding } from '@/lib/pinecone';
 import { createUserDocumentNode, createEntity, createRelationship } from '@/lib/neo4j';
@@ -24,15 +24,20 @@ export class DocumentProcessor {
   }
 
   async processIngestionQueue() {
-    const redis = await pipeline.init();
+    await pipeline.init();
+    const redis = await getRedisClient();
     
     while (this.isProcessing) {
       try {
         const messages = await redis.xRead([{ key: 'doc:ingestion', id: '$' }], { BLOCK: 1000 });
         
-        for (const message of messages || []) {
-          for (const entry of message.messages) {
-            await this.handleIngestion(entry.message);
+        if (messages && Array.isArray(messages)) {
+          for (const message of messages as any[]) {
+            if (message.messages && Array.isArray(message.messages)) {
+              for (const entry of message.messages as any[]) {
+                await this.handleIngestion(entry.message);
+              }
+            }
           }
         }
       } catch (error) {
@@ -68,15 +73,20 @@ export class DocumentProcessor {
   }
 
   async processParsingQueue() {
-    const redis = await pipeline.init();
+    await pipeline.init();
+    const redis = await getRedisClient();
     
     while (this.isProcessing) {
       try {
         const messages = await redis.xRead([{ key: 'doc:parsing', id: '$' }], { BLOCK: 1000 });
         
-        for (const message of messages || []) {
-          for (const entry of message.messages) {
-            await this.handleParsing(entry.message);
+        if (messages && Array.isArray(messages)) {
+          for (const message of messages as any[]) {
+            if (message.messages && Array.isArray(message.messages)) {
+              for (const entry of message.messages as any[]) {
+                await this.handleParsing(entry.message);
+              }
+            }
           }
         }
       } catch (error) {
@@ -113,15 +123,20 @@ export class DocumentProcessor {
   }
 
   async processOntologyQueue() {
-    const redis = await pipeline.init();
+    await pipeline.init();
+    const redis = await getRedisClient();
     
     while (this.isProcessing) {
       try {
         const messages = await redis.xRead([{ key: 'doc:ontology', id: '$' }], { BLOCK: 1000 });
         
-        for (const message of messages || []) {
-          for (const entry of message.messages) {
-            await this.handleOntology(entry.message);
+        if (messages && Array.isArray(messages)) {
+          for (const message of messages as any[]) {
+            if (message.messages && Array.isArray(message.messages)) {
+              for (const entry of message.messages as any[]) {
+                await this.handleOntology(entry.message);
+              }
+            }
           }
         }
       } catch (error) {
@@ -170,15 +185,20 @@ export class DocumentProcessor {
   }
 
   async processEmbeddingQueue() {
-    const redis = await pipeline.init();
+    await pipeline.init();
+    const redis = await getRedisClient();
     
     while (this.isProcessing) {
       try {
         const messages = await redis.xRead([{ key: 'doc:embedding', id: '$' }], { BLOCK: 1000 });
         
-        for (const message of messages || []) {
-          for (const entry of message.messages) {
-            await this.handleEmbedding(entry.message);
+        if (messages && Array.isArray(messages)) {
+          for (const message of messages as any[]) {
+            if (message.messages && Array.isArray(message.messages)) {
+              for (const entry of message.messages as any[]) {
+                await this.handleEmbedding(entry.message);
+              }
+            }
           }
         }
       } catch (error) {
@@ -254,15 +274,20 @@ export class DocumentProcessor {
   }
 
   async processGraphQueue() {
-    const redis = await pipeline.init();
+    await pipeline.init();
+    const redis = await getRedisClient();
     
     while (this.isProcessing) {
       try {
         const messages = await redis.xRead([{ key: 'doc:graph', id: '$' }], { BLOCK: 1000 });
         
-        for (const message of messages || []) {
-          for (const entry of message.messages) {
-            await this.handleGraph(entry.message);
+        if (messages && Array.isArray(messages)) {
+          for (const message of messages as any[]) {
+            if (message.messages && Array.isArray(message.messages)) {
+              for (const entry of message.messages as any[]) {
+                await this.handleGraph(entry.message);
+              }
+            }
           }
         }
       } catch (error) {

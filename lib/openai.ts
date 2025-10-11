@@ -65,10 +65,10 @@ export async function extractEntitiesAndRelationships(text: string) {
   }
 }
 
-export async function generateResponse(
+export async function generateStreamingResponse(
   query: string,
   context: string[],
-  conversationHistory: Array<{role: string, content: string}> = []
+  conversationHistory: Array<{role: 'user' | 'assistant' | 'system', content: string}> = []
 ) {
   try {
     const messages = [
