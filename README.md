@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Query Now - AI-Powered Document Intelligence
 
-## Getting Started
+Upload documents and chat with your knowledge base using advanced AI processing pipeline.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Smart Document Upload**: PDF, DOCX, TXT file support
+- **AI Processing Pipeline**: Automatic text extraction, embedding generation, and knowledge graph creation  
+- **Semantic Search**: Powered by OpenAI embeddings and Pinecone vector database
+- **Knowledge Graphs**: Entity and relationship extraction stored in Neo4j
+- **Intelligent Caching**: Redis for fast query responses
+- **Secure Authentication**: Kinde authentication
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Technology Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Frontend**: Next.js 15 with TypeScript, Tailwind CSS
+- **Authentication**: Kinde
+- **Storage**: Appwrite (files + metadata)
+- **AI**: OpenAI GPT-4 for embeddings and entity extraction
+- **Vector DB**: Pinecone for semantic search
+- **Graph DB**: Neo4j for knowledge graphs
+- **Cache**: Redis for performance optimization
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Quick Setup
 
-## Learn More
+1. **Clone and Install**
+   ```bash
+   git clone <your-repo>
+   cd query-now
+   pnpm install
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+2. **Environment Variables**
+   ```bash
+   cp env.example .env.local
+   # Fill in your API keys and credentials
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. **Service Setup**
+   
+   **Appwrite**: 
+   - Create database `main`
+   - Create collection `user_documents` with fields:
+     - fileId (string), fileName (string), userId (string)
+     - uploadedAt (string), status (string), processingStage (string)
+   - Create storage bucket `documents`
+   
+   **Pinecone**: Create index with 1536 dimensions, cosine similarity
+   
+   **Neo4j**: Create database instance (local or Aura)
+   
+   **Redis**: Set up Redis instance
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+4. **Run Development Server**
+   ```bash
+   pnpm run dev
+   ```
 
-## Deploy on Vercel
+## Usage
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Sign in with Kinde authentication
+2. Upload documents (PDF, DOCX, TXT)
+3. Watch the AI processing pipeline:
+   - Text extraction
+   - Embedding generation → Pinecone
+   - Entity extraction → Neo4j
+   - Caching → Redis
+4. Chat with your documents using intelligent search
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## API Endpoints
+
+- `GET /api/user/profile` - User details from Kinde
+- `GET /api/documents` - User's uploaded documents
+- `POST /api/documents` - Upload new document
+- `POST /api/chat` - Chat with document knowledge base
+
+## Troubleshooting
+
+**Database not found error**: Visit `/setup` for detailed setup instructions.
+
+**Processing failures**: Check your OpenAI, Pinecone, Neo4j, and Redis configurations.
+
+## Development
+
+Built with modern web technologies and AI services for scalable document intelligence.
