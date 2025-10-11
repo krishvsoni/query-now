@@ -31,29 +31,113 @@ Upload documents and chat with your knowledge base using advanced AI processing 
    ```
 
 2. **Environment Variables**
+   Create `.env.local` file with the following variables:
    ```bash
-   cp env.example .env.local
-   # Fill in your API keys and credentials
+   # Appwrite Configuration
+   APPWRITE_PROJECT_ID=your_project_id
+   APPWRITE_ENDPOINT=https://your-region.cloud.appwrite.io/v1
+   APPWRITE_API_KEY=your_api_key
+   APPWRITE_BUCKET_ID=documents-storage
+   
+   # OpenAI
+   OPENAI_API_KEY=your_openai_api_key
+   
+   # Pinecone
+   PINECONE_API_KEY=your_pinecone_api_key
+   
+   # Neo4j
+   NEO4J_URI=your_neo4j_uri
+   NEO4J_USERNAME=your_username
+   NEO4J_PASSWORD=your_password
+   NEO4J_DATABASE=neo4j
+   
+   # Redis
+   REDIS_HOST=your_redis_host
+   REDIS_PORT=your_redis_port
+   REDIS_USERNAME=your_redis_username
+   REDIS_PASSWORD=your_redis_password
+   
+   # Kinde Authentication
+   KINDE_CLIENT_ID=your_client_id
+   KINDE_CLIENT_SECRET=your_client_secret
+   KINDE_ISSUER_URL=your_issuer_url
+   KINDE_SITE_URL=http://localhost:3000
+   KINDE_POST_LOGOUT_REDIRECT_URL=http://localhost:3000
+   KINDE_POST_LOGIN_REDIRECT_URL=http://localhost:3000/chat
    ```
 
-3. **Service Setup**
+3. **Initialize Appwrite Database & Storage**
+   ```bash
+   # This will automatically create the database, collection, and storage bucket
+   curl -X POST http://localhost:3000/api/setup
+   ```
    
-   **Appwrite**: 
-   - Create database `main`
-   - Create collection `user_documents` with fields:
+   **Or manually in Appwrite Console:**
+   - Create database with your project ID + '-db'
+   - Create collection `user-documents` with fields:
      - fileId (string), fileName (string), userId (string)
-     - uploadedAt (string), status (string), processingStage (string)
-   - Create storage bucket `documents`
-   
-   **Pinecone**: Create index with 1536 dimensions, cosine similarity
-   
-   **Neo4j**: Create database instance (local or Aura)
+     - uploadedAt (datetime), status (string), processingStage (string)
+   - Create storage bucket `documents-storage`
    
    **Redis**: Set up Redis instance
 
 4. **Run Development Server**
    ```bash
    pnpm run dev
+   ```
+   
+   Access the application at `http://localhost:3000`
+
+## What's Been Fixed
+
+✅ **Appwrite Configuration**:
+- Removed redundant `appwrite-storage.ts` file
+- Consolidated all Appwrite functionality into single `appwrite.ts` file
+- Added proper bucket ID management with environment variable
+- Created programmatic bucket creation with proper permissions
+
+✅ **Database Structure**:
+- Fixed bucket ID to use dedicated `APPWRITE_BUCKET_ID` instead of project ID
+- Added database operations for user document metadata
+- Implemented proper document-to-storage mapping
+
+✅ **API Routes**:
+- Updated upload and document routes to use new database structure
+- Fixed document ID references throughout the application
+- Added proper error handling and metadata management
+
+✅ **Environment Variables**:
+- Added `APPWRITE_BUCKET_ID=documents-storage` to environment
+- Simplified configuration using only necessary variables
+
+✅ **Initialization**:
+- Created `/api/setup` endpoint for easy database initialization
+- Automated bucket and collection creation with proper permissions
+- Added comprehensive error handling and logging
+
+## Usage
+
+1. **Upload Documents**: Go to `/chat` and upload PDF, DOCX, or TXT files
+2. **Processing Pipeline**: Documents are automatically processed through:
+   - Text extraction
+   - Embedding generation (OpenAI)
+   - Vector storage (Pinecone)
+   - Entity extraction (Neo4j)
+   - Caching (Redis)
+3. **Chat Interface**: Ask questions about your uploaded documents
+4. **Semantic Search**: Get contextually relevant answers from your knowledge base
+
+## Architecture
+
+```
+User Upload → Appwrite Storage → Processing Pipeline → AI Services
+                     ↓                    ↓
+              Document Metadata → Embeddings → Pinecone Vector DB
+                                     ↓
+                              Knowledge Graph → Neo4j
+                                     ↓
+                               Query Cache → Redis
+```
    ```
 
 ## Usage

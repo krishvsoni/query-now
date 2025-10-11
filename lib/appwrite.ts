@@ -1,4 +1,4 @@
-import { Client, Storage, ID } from 'node-appwrite';
+import { Client, Storage, Databases, ID, Permission, Role } from 'node-appwrite';
 import { Readable } from 'stream';
 
 const client = new Client()
@@ -8,16 +8,42 @@ const client = new Client()
 
 export const storage = new Storage(client);
 
-export const BUCKET_ID = process.env.APPWRITE_BUCKET_ID || '68ea295d00045dccdc3d';
+export const PROJECT_ID = process.env.APPWRITE_PROJECT_ID;
+
+// Initialize bucket if it doesn't exist
+export async function initializeStorageBucket() {
+  try {
+    await storage.getBucket(BUCKET_ID);
+    console.log('Storage bucket already exists');
+  } catch (error) {
+    try {
+      await storage.createBucket(
+        BUCKET_ID,
+        'Documents Storage',
+        [
+          Permission.read(Role.any()),
+          Permission.write(Role.any()),
+          Permission.create(Role.any()),
+          Permission.update(Role.any()),
+          Permission.delete(Role.any())
+        ],
+        false, // Not file security
+        true,  // Enabled
+        undefined, // No max file size
+        ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'txt', 'md', 'csv', 'xlsx'] // Allowed file extensions
+      );
+      console.log('Created storage bucket successfully');
+    } catch (createError) {
+      console.error('Error creating storage bucket:', createError);
+      throw createError;
+    }
+  }
+}
 
 export async function uploadDocument(file: Buffer, fileName: string, userId: string) {
   try {
-    // Check if storage bucket exists first
-    try {
-      await storage.getBucket(BUCKET_ID);
-    } catch (bucketError) {
-      throw new Error(`Storage bucket '${BUCKET_ID}' not found. Please create it in Appwrite console.`);
-    }
+    // Ensure bucket exists
+    await initializeStorageBucket();
 
     // For Node.js environment, we need to handle the buffer differently
     const tempFile = {
@@ -83,6 +109,67 @@ export async function getFileInfo(fileId: string) {
     return file;
   } catch (error) {
     console.error('Error getting file info:', error);
+    throw error;
+  }
+}
+
+// Database operations for user documents
+export async function saveDocumentMetadata(documentData: {
+  fileId: string;
+  fileName: string;
+  userId: string;
+  status: string;
+  processingStage: string;
+}) {
+  try {
+    const response = await databases.createDocument(
+      DATABASE_ID,
+      DOCUMENTS_COLLECTION,
+      ID.unique(),
+      {
+        ...documentData,
+        uploadedAt: new Date().toISOString()
+      }
+    );
+    return response;
+  } catch (error) {
+    console.error('Error saving document metadata:', error);
+    throw error;
+  }
+}
+
+export async function getUserDocuments(userId: string) {
+  try {
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      DOCUMENTS_COLLECTION,
+      [
+        // Add query filters if needed
+      ]
+    );
+    return response.documents.filter(doc => doc.userId === userId);
+  } catch (error) {
+    console.error('Error getting user documents:', error);
+    throw error;
+  }
+}
+
+export async function updateDocumentStatus(documentId: string, status: string, processingStage?: string) {
+  try {
+    const updateData: any = { status };
+    if (processingStage) {
+      updateData.processingStage = processingStage;
+    }
+    
+    const response = await databases.updateDocument(
+      DATABASE_ID,
+      DOCUMENTS_COLLECTION,
+      documentId,
+      updateData
+    );
+    return response;
+  } catch (error) {
+    console.error('Error updating document status:', error);
     throw error;
   }
 }

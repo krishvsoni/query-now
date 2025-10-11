@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserDetails } from '@/lib/auth';
-import { listStorageFiles, uploadDocument } from '@/lib/appwrite';
+import { listStorageFiles, uploadDocument, getUserDocuments, saveDocumentMetadata } from '@/lib/appwrite';
 import { documentProcessor } from '@/lib/document-processor';
 import { pipeline } from '@/lib/redis';
 
@@ -8,13 +8,13 @@ export async function GET(request: NextRequest) {
   try {
     const userDetails = await getUserDetails();
     
-    // Get all files from storage (since we're using storage only)
+    // Get user documents from database
     let documents = [];
     try {
-      documents = await listStorageFiles();
+      documents = await getUserDocuments(userDetails.id);
     } catch (error) {
-      console.warn('Could not fetch storage files:', error);
-      // Return empty array instead of error if storage setup is incomplete
+      console.warn('Could not fetch user documents:', error);
+      // Return empty array instead of error if database setup is incomplete
     }
     
     return NextResponse.json({
@@ -91,9 +91,18 @@ export async function POST(request: NextRequest) {
     // Upload to Appwrite with user details
     const uploadResult = await uploadDocument(buffer, file.name, userDetails.id);
     
+    // Save document metadata to database
+    const documentMetadata = await saveDocumentMetadata({
+      fileId: uploadResult.fileId,
+      fileName: file.name,
+      userId: userDetails.id,
+      status: 'uploaded',
+      processingStage: 'pending'
+    });
+    
     // Queue document for processing pipeline (async)
     await pipeline.queueDocumentIngestion(
-      uploadResult.documentId,
+      documentMetadata.$id,
       userDetails.id,
       file.name,
       uploadResult.filePath
@@ -104,17 +113,17 @@ export async function POST(request: NextRequest) {
     setTimeout(async () => {
       try {
         console.log(`Starting pipeline for user ${userDetails.fullName} (${userDetails.email})`);
-        console.log(`Processing document: ${file.name} (${uploadResult.documentId})`);
+        console.log(`Processing document: ${file.name} (${documentMetadata.$id})`);
         
         await documentProcessor.processDocument(
-          uploadResult.documentId,
+          documentMetadata.$id,
           userDetails.id,
           file.name,
           buffer,
           file.type
         );
         
-        console.log(`Pipeline completed for document: ${uploadResult.documentId}`);
+        console.log(`Pipeline completed for document: ${documentMetadata.$id}`);
       } catch (error) {
         console.error('Background processing pipeline error:', error);
       }
@@ -128,7 +137,7 @@ export async function POST(request: NextRequest) {
         fullName: userDetails.fullName
       },
       document: {
-        id: uploadResult.documentId,
+        id: documentMetadata.$id,
         fileName: file.name,
         status: 'uploaded',
         processingStage: 'pending',

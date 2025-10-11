@@ -3,7 +3,7 @@
 import React from 'react';
 import { 
   ServerIcon, 
-  DatabaseIcon, 
+  CircleStackIcon, 
   CloudIcon, 
   KeyIcon,
   CheckCircleIcon 
@@ -42,7 +42,7 @@ export default function SetupGuide() {
     },
     {
       title: "Pinecone Setup",
-      icon: DatabaseIcon,
+      icon: CircleStackIcon,
       description: "Create vector database index",
       requirements: [
         "Create index with 1536 dimensions (OpenAI embeddings)",

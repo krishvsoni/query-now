@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth';
-import { uploadDocument } from '@/lib/appwrite';
+import { uploadDocument, saveDocumentMetadata } from '@/lib/appwrite';
 import { pipeline } from '@/lib/redis';
 
 export async function POST(request: NextRequest) {
@@ -18,8 +18,17 @@ export async function POST(request: NextRequest) {
 
     const uploadResult = await uploadDocument(buffer, file.name, user.id);
     
+    // Save document metadata to database
+    const documentMetadata = await saveDocumentMetadata({
+      fileId: uploadResult.fileId,
+      fileName: file.name,
+      userId: user.id,
+      status: 'uploaded',
+      processingStage: 'pending'
+    });
+    
     await pipeline.queueDocumentIngestion(
-      uploadResult.documentId,
+      documentMetadata.$id,
       user.id,
       uploadResult.fileName,
       uploadResult.filePath
@@ -27,7 +36,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      document: uploadResult
+      document: {
+        id: documentMetadata.$id,
+        fileName: uploadResult.fileName,
+        fileId: uploadResult.fileId,
+        status: 'uploaded',
+        processingStage: 'pending',
+        uploadedAt: uploadResult.uploadedAt
+      }
     });
 
   } catch (error) {
