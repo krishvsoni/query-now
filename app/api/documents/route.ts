@@ -1,151 +1,127 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserDetails } from '@/lib/auth';
-import { listStorageFiles, uploadDocument, getUserDocuments, saveDocumentMetadata } from '@/lib/appwrite';
+import { uploadDocument, getUserDocuments, saveDocumentMetadata } from '@/lib/appwrite';
 import { documentProcessor } from '@/lib/document-processor';
 import { DocumentPipeline } from '@/lib/redis';
 
+export const runtime = 'nodejs'; 
+
+/**
+ * GET – Fetch user documents
+ */
 export async function GET(request: NextRequest) {
   try {
     const userDetails = await getUserDetails();
-    
-    // Get user documents from database
+
     let documents = [];
     try {
       documents = await getUserDocuments(userDetails.id);
     } catch (error) {
       console.warn('Could not fetch user documents:', error);
-      // Return empty array instead of error if database setup is incomplete
     }
-    
+
     return NextResponse.json({
       success: true,
       user: {
         id: userDetails.id,
         email: userDetails.email,
-        fullName: userDetails.fullName
+        fullName: userDetails.fullName,
       },
-      documents: documents.map(doc => ({
+      documents: documents.map((doc) => ({
         id: doc.$id,
         fileName: doc.fileName,
         status: doc.status,
         processingStage: doc.processingStage,
         uploadedAt: doc.uploadedAt,
-        fileId: doc.fileId
+        fileId: doc.fileId,
       })),
-      setupRequired: documents.length === 0 ? true : false
+      setupRequired: documents.length === 0,
     });
   } catch (error) {
     console.error('Error in documents GET route:', error);
-    
-    // If it's an auth error, return 401
+
     if (error instanceof Error && error.message.includes('Unauthorized')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
-    return NextResponse.json({ 
-      error: 'Failed to fetch documents. Please ensure Appwrite is properly configured.',
-      setupRequired: true 
-    }, { status: 500 });
+
+    return NextResponse.json(
+      {
+        error:
+          'Failed to fetch documents. Please ensure Appwrite is properly configured.',
+        setupRequired: true,
+      },
+      { status: 500 }
+    );
   }
 }
 
+/**
+ * POST – Upload a document, store in Appwrite, and queue for processing
+ */
 export async function POST(request: NextRequest) {
   try {
     const userDetails = await getUserDetails();
-    
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    
+
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Validate file type
-    const allowedTypes = [
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain',
-      'text/markdown',
-      'text/csv',
-      'text/html',
-      'text/css',
-      'application/javascript',
-      'application/json',
-      'application/xml',
-      'text/x-python',
-      'text/x-java-source',
-      'text/x-c',
-      'text/x-c++',
-      'text/x-csharp',
-      'text/x-go',
-      'text/x-rust',
-      'text/x-ruby',
-      'text/x-php',
-      'text/x-swift',
-      'text/x-kotlin',
-      'text/x-scala'
-    ];
-    
     const allowedExtensions = [
-      // Documents
       'pdf', 'docx', 'txt', 'md', 'markdown', 'rtf', 'csv', 'log',
-      // Web
       'html', 'htm', 'css', 'scss', 'sass', 'less', 'xml', 'svg',
-      // JavaScript/TypeScript
-      'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs',
-      // Python
-      'py', 'pyw', 'pyx', 'pyd', 'ipynb',
-      // Java/JVM
-      'java', 'kt', 'scala', 'groovy', 'clj',
-      // C/C++
-      'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'hxx',
-      // C#/.NET
-      'cs', 'vb', 'fs',
-      // Other languages
-      'go', 'rs', 'rb', 'php', 'swift', 'r', 'm', 'mm',
-      // Shell/Scripts
-      'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
-      // Database
-      'sql', 'psql', 'mysql',
-      // Config/Data
-      'json', 'yaml', 'yml', 'toml', 'ini', 'conf', 'config', 'env',
-      // Documentation
-      'rst', 'tex', 'adoc', 'org'
+      'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'py', 'java', 'kt',
+      'scala', 'groovy', 'clj', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp',
+      'hxx', 'cs', 'vb', 'fs', 'go', 'rs', 'rb', 'php', 'swift', 'r',
+      'm', 'mm', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+      'sql', 'psql', 'mysql', 'json', 'yaml', 'yml', 'toml', 'ini',
+      'conf', 'config', 'env', 'rst', 'tex', 'adoc', 'org',
     ];
-    
+
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    
-    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension || '')) {
-      return NextResponse.json({ 
-        error: `Unsupported file type. Please upload documents, text files, or code files. Supported extensions: ${allowedExtensions.slice(0, 20).join(', ')}, and more.` 
-      }, { status: 400 });
+    if (!allowedExtensions.includes(fileExtension || '')) {
+      return NextResponse.json(
+        {
+          error: `Unsupported file type. Supported extensions include: ${allowedExtensions
+            .slice(0, 20)
+            .join(', ')}, and more.`,
+        },
+        { status: 400 }
+      );
     }
 
-    // File size validation removed - no limit
-    console.log(`Processing upload for user: ${userDetails.fullName} (${userDetails.email})`);
-    console.log(`File: ${file.name}, Size: ${file.size} bytes, Type: ${file.type}`);
+    console.log(
+      `Processing upload for user: ${userDetails.fullName} (${userDetails.email})`
+    );
+    console.log(
+      `File: ${file.name}, Size: ${file.size} bytes, Type: ${file.type}`
+    );
 
-    // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Upload to Appwrite with user details and proper MIME type
-    const uploadResult = await uploadDocument(buffer, file.name, userDetails.id, file.type);
+    // Upload to Appwrite
+    const uploadResult = await uploadDocument(
+      buffer,
+      file.name,
+      userDetails.id,
+      file.type
+    );
     console.log(`File uploaded to Appwrite: ${uploadResult.fileId}`);
-    
-    // Save document metadata to database
+
+    // Save metadata to DB
     const documentMetadata = await saveDocumentMetadata({
       fileId: uploadResult.fileId,
       fileName: file.name,
       userId: userDetails.id,
       status: 'uploaded',
-      processingStage: 'pending'
+      processingStage: 'pending',
     });
-    
-    // Initialize pipeline and queue document for processing
+
+    // Queue in Redis pipeline
     const pipeline = new DocumentPipeline();
     await pipeline.init();
-    
     await pipeline.queueDocumentIngestion(
       documentMetadata.$id,
       userDetails.id,
@@ -155,12 +131,13 @@ export async function POST(request: NextRequest) {
 
     console.log(`Document queued for processing: ${documentMetadata.$id}`);
 
-    // Start comprehensive processing pipeline in background
-    // This includes: parsing → embeddings → Pinecone → Neo4j → Redis caching
+    // 🔥 Process document asynchronously (background)
     setTimeout(async () => {
       try {
-        console.log(`Starting background pipeline for document: ${documentMetadata.$id}`);
-        
+        console.log(
+          `Starting background pipeline for document: ${documentMetadata.$id}`
+        );
+
         await documentProcessor.processDocument(
           documentMetadata.$id,
           userDetails.id,
@@ -168,19 +145,24 @@ export async function POST(request: NextRequest) {
           buffer,
           file.type
         );
-        
-        console.log(`Pipeline completed for document: ${documentMetadata.$id}`);
-      } catch (error) {
-        console.error('Background processing pipeline error:', error);
+
+        console.log(
+          `✅ Pipeline completed successfully for document: ${documentMetadata.$id}`
+        );
+      } catch (err) {
+        console.error(
+          `❌ Background processing failed for document: ${documentMetadata.$id}`,
+          err
+        );
       }
-    }, 100); // Small delay to ensure response is sent first
+    }, 100);
 
     return NextResponse.json({
       success: true,
       user: {
         id: userDetails.id,
         email: userDetails.email,
-        fullName: userDetails.fullName
+        fullName: userDetails.fullName,
       },
       document: {
         id: documentMetadata.$id,
@@ -188,20 +170,18 @@ export async function POST(request: NextRequest) {
         status: 'uploaded',
         processingStage: 'queued',
         fileId: uploadResult.fileId,
-        uploadedAt: new Date().toISOString()
+        uploadedAt: new Date().toISOString(),
       },
-      message: `Successfully uploaded "${file.name}". Processing pipeline started.`
+      message: `Successfully uploaded "${file.name}". Processing pipeline started.`,
     });
-
   } catch (error) {
     console.error('Error uploading document:', error);
-    
-    // Return more detailed error information
+
     let errorMessage = 'Failed to upload document';
     let statusCode = 500;
-    
+
     if (error instanceof Error) {
-      if (error.message.includes('Unauthorized') || error.message.includes('authentication')) {
+      if (error.message.includes('Unauthorized')) {
         errorMessage = 'Authentication required. Please log in.';
         statusCode = 401;
       } else if (error.message.includes('Appwrite')) {
@@ -212,10 +192,18 @@ export async function POST(request: NextRequest) {
         errorMessage = error.message;
       }
     }
-    
-    return NextResponse.json({ 
-      error: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? error instanceof Error ? error.stack : String(error) : undefined
-    }, { status: statusCode });
+
+    return NextResponse.json(
+      {
+        error: errorMessage,
+        details:
+          process.env.NODE_ENV === 'development'
+            ? error instanceof Error
+              ? error.stack
+              : String(error)
+            : undefined,
+      },
+      { status: statusCode }
+    );
   }
 }
