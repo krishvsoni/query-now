@@ -64,15 +64,60 @@ export async function POST(request: NextRequest) {
     const allowedTypes = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain'
+      'text/plain',
+      'text/markdown',
+      'text/csv',
+      'text/html',
+      'text/css',
+      'application/javascript',
+      'application/json',
+      'application/xml',
+      'text/x-python',
+      'text/x-java-source',
+      'text/x-c',
+      'text/x-c++',
+      'text/x-csharp',
+      'text/x-go',
+      'text/x-rust',
+      'text/x-ruby',
+      'text/x-php',
+      'text/x-swift',
+      'text/x-kotlin',
+      'text/x-scala'
     ];
     
-    const allowedExtensions = ['pdf', 'docx', 'txt'];
+    const allowedExtensions = [
+      // Documents
+      'pdf', 'docx', 'txt', 'md', 'markdown', 'rtf', 'csv', 'log',
+      // Web
+      'html', 'htm', 'css', 'scss', 'sass', 'less', 'xml', 'svg',
+      // JavaScript/TypeScript
+      'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs',
+      // Python
+      'py', 'pyw', 'pyx', 'pyd', 'ipynb',
+      // Java/JVM
+      'java', 'kt', 'scala', 'groovy', 'clj',
+      // C/C++
+      'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'hxx',
+      // C#/.NET
+      'cs', 'vb', 'fs',
+      // Other languages
+      'go', 'rs', 'rb', 'php', 'swift', 'r', 'm', 'mm',
+      // Shell/Scripts
+      'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+      // Database
+      'sql', 'psql', 'mysql',
+      // Config/Data
+      'json', 'yaml', 'yml', 'toml', 'ini', 'conf', 'config', 'env',
+      // Documentation
+      'rst', 'tex', 'adoc', 'org'
+    ];
+    
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
     
     if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension || '')) {
       return NextResponse.json({ 
-        error: 'Unsupported file type. Please upload PDF, DOCX, or TXT files.' 
+        error: `Unsupported file type. Please upload documents, text files, or code files. Supported extensions: ${allowedExtensions.slice(0, 20).join(', ')}, and more.` 
       }, { status: 400 });
     }
 

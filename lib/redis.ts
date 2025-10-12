@@ -41,7 +41,7 @@ export class DocumentPipeline {
       fileName,
       filePath,
       stage: 'parsing',
-      timestamp: Date.now()
+      timestamp: Date.now().toString()
     };
 
     await this.redis.xAdd('doc:ingestion', '*', job);
@@ -60,7 +60,7 @@ export class DocumentPipeline {
         docId,
         stage: nextStage,
         data: JSON.stringify(data),
-        timestamp: Date.now()
+        timestamp: Date.now().toString()
       };
 
       await this.redis.xAdd(`doc:${nextStage}`, '*', job);

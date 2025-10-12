@@ -26,15 +26,43 @@ export async function createUserDocumentNode(
   const session = await getSession();
   
   try {
+    // Flatten metadata to avoid Neo4j Map type error
+    // Neo4j only supports primitive types as property values
+    const flatMetadata: Record<string, string | number | boolean> = {};
+    
+    for (const [key, value] of Object.entries(metadata)) {
+      if (value !== null && value !== undefined) {
+        if (typeof value === 'object') {
+          // Convert objects to JSON strings
+          flatMetadata[key] = JSON.stringify(value);
+        } else {
+          flatMetadata[key] = value as string | number | boolean;
+        }
+      }
+    }
+    
     const result = await session.run(
       `
       MERGE (u:User {id: $userId})
       MERGE (d:Document {id: $documentId})
-      SET d.fileName = $fileName, d.metadata = $metadata, d.createdAt = datetime()
+      SET d.fileName = $fileName, 
+          d.pageCount = $pageCount,
+          d.wordCount = $wordCount,
+          d.fileSize = $fileSize,
+          d.extractedAt = $extractedAt,
+          d.createdAt = datetime()
       MERGE (u)-[:OWNS]->(d)
       RETURN d
       `,
-      { userId, documentId, fileName, metadata }
+      { 
+        userId, 
+        documentId, 
+        fileName,
+        pageCount: flatMetadata.pageCount || 0,
+        wordCount: flatMetadata.wordCount || 0,
+        fileSize: flatMetadata.fileSize || 0,
+        extractedAt: flatMetadata.extractedAt || new Date().toISOString()
+      }
     );
     
     return result.records[0]?.get('d');

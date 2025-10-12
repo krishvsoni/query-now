@@ -1,9 +1,10 @@
-const pdfParse = require('pdf-parse');
 import mammoth from 'mammoth';
 import { generateEmbedding, extractEntitiesAndRelationships, chunkText } from './openai';
 import { storeEmbedding } from './pinecone';
 import { createEntity, createRelationship, createUserDocumentNode } from './neo4j';
 import { pipeline, updateDocumentStatus } from './redis';
+import Tesseract from 'tesseract.js';
+import { PDFDocument } from 'pdf-lib';
 
 export interface ProcessedChunk {
   id: string;
@@ -27,10 +28,73 @@ export interface ExtractedText {
 }
 
 export class DocumentProcessor {
-  
+  private async extractTextFromPDFWithOCR(buffer: Buffer): Promise<{ content: string; pageCount: number }> {
+    try {
+      console.log('Starting PDF OCR extraction with Tesseract...');
+      
+      // Load PDF with pdf-lib to get page count
+      const pdfDoc = await PDFDocument.load(buffer);
+      const pageCount = pdfDoc.getPageCount();
+      console.log(`PDF has ${pageCount} pages`);
+      
+      let allText = '';
+      const maxPages = Math.min(pageCount, 100); // Limit to 100 pages to avoid timeout
+      
+      // Process each page with OCR
+      for (let pageNum = 0; pageNum < maxPages; pageNum++) {
+        try {
+          console.log(`Processing page ${pageNum + 1}/${maxPages} with OCR...`);
+          
+          // Extract single page as new PDF
+          const singlePagePdf = await PDFDocument.create();
+          const [copiedPage] = await singlePagePdf.copyPages(pdfDoc, [pageNum]);
+          singlePagePdf.addPage(copiedPage);
+          
+          // Save to buffer
+          const pdfBytes = await singlePagePdf.save();
+          
+          // Perform OCR on the PDF page
+          const { data: { text } } = await Tesseract.recognize(
+            Buffer.from(pdfBytes),
+            'eng',
+            {
+              logger: (m) => {
+                if (m.status === 'recognizing text') {
+                  const progress = Math.round(m.progress * 100);
+                  if (progress % 50 === 0 && progress > 0) {
+                    console.log(`  Page ${pageNum + 1} OCR progress: ${progress}%`);
+                  }
+                }
+              }
+            }
+          );
+          
+          allText += text + '\n\n';
+          
+        } catch (pageError) {
+          console.warn(`Error processing page ${pageNum + 1}:`, pageError);
+          // Continue with next page
+        }
+      }
+      
+      if (allText.trim().length === 0) {
+        throw new Error('No text could be extracted from PDF using OCR');
+      }
+      
+      console.log(`Successfully extracted ${allText.length} characters from ${maxPages} pages using OCR`);
+      
+      return {
+        content: allText.trim(),
+        pageCount: maxPages
+      };
+    } catch (error) {
+      console.error('PDF OCR extraction error:', error);
+      throw new Error(`Failed to extract text from PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   async parseDocument(buffer: Buffer, fileName: string, mimeType: string): Promise<ExtractedText> {
     const fileExtension = fileName.split('.').pop()?.toLowerCase();
-    
     try {
       let content = '';
       let metadata: any = {
@@ -38,31 +102,74 @@ export class DocumentProcessor {
         extractedAt: new Date().toISOString(),
         wordCount: 0
       };
-
-      switch (fileExtension) {
-        case 'pdf':
-          const pdfData = await pdfParse(buffer);
-          content = pdfData.text;
-          metadata.pageCount = pdfData.numpages;
-          break;
+      const codeExtensions = [
+        'js', 'jsx', 'ts', 'tsx', 'py', 'java', 'cpp', 'c', 'h', 'hpp',
+        'cs', 'go', 'rs', 'rb', 'php', 'swift', 'kt', 'scala', 'r',
+        'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd', 'sql', 'html', 'css',
+        'scss', 'sass', 'less', 'xml', 'json', 'yaml', 'yml', 'toml',
+        'ini', 'conf', 'config', 'md', 'markdown', 'rst', 'tex'
+      ];
+      const textExtensions = [
+        'txt', 'log', 'csv', 'tsv', 'rtf', ...codeExtensions
+      ];
+      if (fileExtension === 'pdf') {
+        try {
+          console.log('Starting PDF text extraction with OCR...');
+          const result = await this.extractTextFromPDFWithOCR(buffer);
+          content = result.content;
+          metadata.pageCount = result.pageCount;
+          console.log(`Extracted ${content.length} characters from ${result.pageCount} pages`);
           
-        case 'docx':
+          if (!content || content.trim().length === 0) {
+            throw new Error('PDF appears to be empty or contains no extractable text');
+          }
+        } catch (pdfError) {
+          console.error('PDF extraction error:', pdfError);
+          throw new Error(`Failed to extract text from PDF: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}`);
+        }
+      } else if (fileExtension === 'docx') {
+        try {
           const docxResult = await mammoth.extractRawText({ buffer });
           content = docxResult.value;
-          break;
-          
-        case 'txt':
+          metadata.messages = docxResult.messages;
+          if (!content || content.trim().length === 0) {
+            throw new Error('DOCX appears to be empty or could not be parsed');
+          }
+        } catch (docxError) {
+          console.error('DOCX parsing error:', docxError);
+          throw new Error(`Failed to parse DOCX: ${docxError instanceof Error ? docxError.message : 'Unknown error'}`);
+        }
+      } else if (textExtensions.includes(fileExtension || '')) {
+        try {
           content = buffer.toString('utf-8');
-          break;
-          
-        default:
-          throw new Error(`Unsupported file type: ${fileExtension}`);
+          if (content.includes('\ufffd')) {
+            try {
+              content = buffer.toString('latin1');
+            } catch {
+              content = buffer.toString('ascii');
+            }
+          }
+          metadata.fileType = codeExtensions.includes(fileExtension || '') ? 'code' : 'text';
+          metadata.language = fileExtension;
+        } catch (textError) {
+          console.error('Text parsing error:', textError);
+          throw new Error(`Failed to parse text file: ${textError instanceof Error ? textError.message : 'Unknown error'}`);
+        }
+      } else {
+        try {
+          content = buffer.toString('utf-8');
+          metadata.fileType = 'unknown';
+          metadata.language = fileExtension;
+          console.warn(`Unknown file type .${fileExtension}, attempting to parse as text`);
+        } catch {
+          throw new Error(`Unsupported file type: ${fileExtension}. Supported types: PDF, DOCX, TXT, and code files (JS, TS, PY, etc.)`);
+        }
       }
-
-      // Clean and normalize text
+      if (!content || content.trim().length === 0) {
+        throw new Error('No text content could be extracted from the file');
+      }
       content = this.cleanText(content);
       metadata.wordCount = content.split(/\s+/).length;
-
       return { content, metadata };
     } catch (error) {
       console.error('Error parsing document:', error);
@@ -71,7 +178,6 @@ export class DocumentProcessor {
   }
 
   private cleanText(text: string): string {
-    // Remove excessive whitespace and normalize line breaks
     return text
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
@@ -89,46 +195,26 @@ export class DocumentProcessor {
   ): Promise<void> {
     try {
       console.log(`Starting processing for document: ${documentId}`);
-      
-      // Update status to parsing
       await updateDocumentStatus(documentId, 'processing', 'parsing');
-
-      // 1. Extract text from document
       const extracted = await this.parseDocument(fileBuffer, fileName, mimeType);
       console.log(`Extracted ${extracted.metadata.wordCount} words from ${fileName}`);
-
-      // 2. Create document node in Neo4j
       await createUserDocumentNode(userId, documentId, fileName, extracted.metadata);
-      
-      // 3. Chunk the text for embeddings
       const chunks = chunkText(extracted.content, 1000, 200);
       console.log(`Created ${chunks.length} chunks for processing`);
-
-      // Update status to embedding generation
       await updateDocumentStatus(documentId, 'processing', 'embedding');
-
-      // 4. Process chunks in parallel (but limited batch size)
       const batchSize = 5;
       for (let i = 0; i < chunks.length; i += batchSize) {
         const batch = chunks.slice(i, i + batchSize);
         const batchPromises = batch.map((chunk, index) => 
           this.processChunk(chunk, i + index, documentId, userId, fileName)
         );
-        
         await Promise.all(batchPromises);
         console.log(`Processed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(chunks.length / batchSize)}`);
       }
-
-      // Update status to ontology extraction
       await updateDocumentStatus(documentId, 'processing', 'ontology');
-
-      // 5. Extract entities and relationships from full text
       await this.extractOntology(extracted.content, documentId, userId);
-
-      // 6. Complete processing
       await updateDocumentStatus(documentId, 'completed', 'completed');
       console.log(`Document processing completed for: ${documentId}`);
-
     } catch (error) {
       console.error(`Error processing document ${documentId}:`, error);
       await updateDocumentStatus(documentId, 'error', 'failed');
@@ -144,24 +230,16 @@ export class DocumentProcessor {
     fileName: string
   ): Promise<void> {
     try {
-      // Generate embedding for chunk
       const embedding = await generateEmbedding(chunk);
-      
-      // Create unique ID for this chunk
       const chunkId = `${documentId}_chunk_${chunkIndex}`;
-      
-      // Store in Pinecone
       await storeEmbedding(chunkId, embedding, {
         userId,
         documentId,
         fileName,
         content: chunk,
-        chunk: chunkIndex
+        chunkIndex,
+        timestamp: new Date().toISOString()
       });
-
-      // Cache embedding in Redis for potential reuse
-      await pipeline.cacheEmbedding(`embedding:${chunkId}`, embedding, 3600);
-      
     } catch (error) {
       console.error(`Error processing chunk ${chunkIndex}:`, error);
       throw error;
@@ -170,140 +248,43 @@ export class DocumentProcessor {
 
   private async extractOntology(content: string, documentId: string, userId: string): Promise<void> {
     try {
-      // Split content if it's too long for the LLM
-      const maxLength = 15000; // Safe limit for GPT-4
-      const sections = content.length > maxLength 
-        ? this.splitIntoSections(content, maxLength)
-        : [content];
-
-      const allEntities: any[] = [];
-      const allRelationships: any[] = [];
-
-      // Process each section
-      for (const [index, section] of sections.entries()) {
-        console.log(`Extracting ontology from section ${index + 1}/${sections.length}`);
-        
-        const result = await extractEntitiesAndRelationships(section);
-        
-        if (result.entities) {
-          allEntities.push(...result.entities);
-        }
-        
-        if (result.relationships) {
-          allRelationships.push(...result.relationships);
+      console.log('Extracting entities and relationships...');
+      const maxContentLength = 10000;
+      const contentSample = content.length > maxContentLength 
+        ? content.substring(0, maxContentLength) 
+        : content;
+      const ontology = await extractEntitiesAndRelationships(contentSample);
+      console.log(`Extracted ${ontology.entities.length} entities and ${ontology.relationships.length} relationships`);
+      for (const entity of ontology.entities) {
+        try {
+          const embedding = await generateEmbedding(JSON.stringify(entity));
+          await createEntity(
+            documentId,
+            `${documentId}_entity_${entity.name.replace(/\s+/g, '_')}`,
+            entity.type,
+            entity.properties || {},
+            embedding
+          );
+        } catch (entityError) {
+          console.error(`Error creating entity ${entity.name}:`, entityError);
         }
       }
-
-      // Deduplicate entities based on name similarity
-      const deduplicatedEntities = this.deduplicateEntities(allEntities);
-      
-      // Store entities in Neo4j
-      for (const entity of deduplicatedEntities) {
-        await createEntity(
-          documentId,
-          entity.id,
-          entity.type,
-          {
-            name: entity.name,
-            description: entity.description,
-            ...entity.properties
-          }
-        );
-      }
-
-      // Store relationships in Neo4j
-      for (const relationship of allRelationships) {
-        // Only create relationship if both entities exist
-        const sourceExists = deduplicatedEntities.find(e => e.id === relationship.source);
-        const targetExists = deduplicatedEntities.find(e => e.id === relationship.target);
-        
-        if (sourceExists && targetExists) {
+      for (const relationship of ontology.relationships) {
+        try {
           await createRelationship(
-            relationship.source,
-            relationship.target,
+            documentId,
+            `${documentId}_entity_${relationship.from.replace(/\s+/g, '_')}`,
+            `${documentId}_entity_${relationship.to.replace(/\s+/g, '_')}`,
             relationship.type,
             relationship.properties || {}
           );
+        } catch (relError) {
+          console.error(`Error creating relationship ${relationship.from} -> ${relationship.to}:`, relError);
         }
       }
-
-      console.log(`Stored ${deduplicatedEntities.length} entities and ${allRelationships.length} relationships`);
-      
     } catch (error) {
       console.error('Error extracting ontology:', error);
       throw error;
-    }
-  }
-
-  private splitIntoSections(content: string, maxLength: number): string[] {
-    const sections: string[] = [];
-    const paragraphs = content.split('\n\n');
-    let currentSection = '';
-
-    for (const paragraph of paragraphs) {
-      if (currentSection.length + paragraph.length > maxLength) {
-        if (currentSection) {
-          sections.push(currentSection.trim());
-          currentSection = paragraph;
-        } else {
-          // Paragraph itself is too long, split it
-          sections.push(paragraph.substring(0, maxLength));
-        }
-      } else {
-        currentSection += (currentSection ? '\n\n' : '') + paragraph;
-      }
-    }
-
-    if (currentSection) {
-      sections.push(currentSection.trim());
-    }
-
-    return sections;
-  }
-
-  private deduplicateEntities(entities: any[]): any[] {
-    const deduplicated: any[] = [];
-    const nameMap = new Map<string, any>();
-
-    for (const entity of entities) {
-      const normalizedName = entity.name.toLowerCase().trim();
-      
-      if (nameMap.has(normalizedName)) {
-        // Merge properties from duplicate entity
-        const existing = nameMap.get(normalizedName);
-        existing.properties = { ...existing.properties, ...entity.properties };
-        
-        if (!existing.description && entity.description) {
-          existing.description = entity.description;
-        }
-      } else {
-        nameMap.set(normalizedName, { ...entity });
-        deduplicated.push(entity);
-      }
-    }
-
-    return deduplicated;
-  }
-
-  async getDocumentProcessingStatus(documentId: string): Promise<{
-    status: string;
-    stage: string;
-    progress?: number;
-  }> {
-    try {
-      // This would typically query the database for current status
-      // For now, we'll implement a basic version
-      return {
-        status: 'completed',
-        stage: 'completed',
-        progress: 100
-      };
-    } catch (error) {
-      console.error('Error getting processing status:', error);
-      return {
-        status: 'error',
-        stage: 'failed'
-      };
     }
   }
 }
