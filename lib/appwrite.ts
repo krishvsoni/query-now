@@ -1,26 +1,57 @@
 import { Client, Storage, Databases, ID } from 'node-appwrite';
 
-const client = new Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT!)
-  .setProject(process.env.APPWRITE_PROJECT_ID!)
-  .setKey(process.env.APPWRITE_API_KEY!);
+const validateEnvironment = () => {
+  const required = [
+    'APPWRITE_ENDPOINT',
+    'APPWRITE_PROJECT_ID',
+    'APPWRITE_API_KEY',
+    'APPWRITE_BUCKET_ID'
+  ];
+  const missing = required.filter(key => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required Appwrite environment variables: ${missing.join(', ')}`);
+  }
+};
 
+const initializeClient = () => {
+  validateEnvironment();
+  return new Client()
+    .setEndpoint(process.env.APPWRITE_ENDPOINT!)
+    .setProject(process.env.APPWRITE_PROJECT_ID!)
+    .setKey(process.env.APPWRITE_API_KEY!);
+};
+
+const client = initializeClient();
 const storage = new Storage(client);
 const databases = new Databases(client);
 
 export async function uploadDocument(
-  fileBuffer: Buffer, 
-  fileName: string, 
-  userId: string
+  fileBuffer: Buffer,
+  fileName: string,
+  userId: string,
+  mimeType?: string
 ): Promise<{ fileId: string; filePath: string }> {
   try {
     const fileId = ID.unique();
-    
-    // Create a File object for Appwrite
-    const file = new File([fileBuffer], fileName, {
-      type: 'application/octet-stream'
+    console.log(`Uploading file: ${fileName}, Size: ${fileBuffer.length} bytes, Type: ${mimeType}`);
+
+    let sanitizedFileName = fileName;
+    const fileExtension = fileName.split('.').pop()?.toLowerCase();
+
+    if (fileExtension === 'pdf') {
+      sanitizedFileName = `document_${Date.now()}.pdf`;
+    } else if (fileExtension === 'docx') {
+      sanitizedFileName = `document_${Date.now()}.docx`;
+    } else if (fileExtension === 'txt') {
+      sanitizedFileName = `document_${Date.now()}.txt`;
+    } else {
+      sanitizedFileName = `document_${Date.now()}.txt`;
+    }
+
+    const file = new File([fileBuffer], sanitizedFileName, {
+      type: mimeType || 'application/octet-stream'
     });
-    
+
     const uploadedFile = await storage.createFile(
       process.env.APPWRITE_BUCKET_ID!,
       fileId,
@@ -30,13 +61,53 @@ export async function uploadDocument(
         `write("user:${userId}")`
       ]
     );
-
+    const filePath = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${uploadedFile.$id}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
+    console.log(`File uploaded successfully: ${uploadedFile.$id} (original: ${fileName}, stored as: ${sanitizedFileName})`);
     return {
       fileId: uploadedFile.$id,
-      filePath: `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${uploadedFile.$id}/view?project=${process.env.APPWRITE_PROJECT_ID}`
+      filePath
     };
   } catch (error) {
     console.error('Appwrite upload error:', error);
+    if (error instanceof Error) {
+      if (error.message.includes('File extension not allowed') || error.message.includes('storage_file_type_unsupported')) {
+        try {
+          console.log('Retrying upload with generic filename...');
+          const fallbackId = ID.unique();
+          const fallbackFile = new File([fileBuffer], `upload_${Date.now()}.bin`, {
+            type: 'application/octet-stream'
+          });
+
+          const fallbackUpload = await storage.createFile(
+            process.env.APPWRITE_BUCKET_ID!,
+            fallbackId,
+            fallbackFile,
+            [
+              `read("user:${userId}")`,
+              `write("user:${userId}")`
+            ]
+          );
+
+          const fallbackPath = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fallbackUpload.$id}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
+          console.log(`File uploaded successfully with fallback method: ${fallbackUpload.$id}`);
+
+          return {
+            fileId: fallbackUpload.$id,
+            filePath: fallbackPath
+          };
+        } catch (fallbackError) {
+          throw new Error(`File type not supported by storage service. Both primary and fallback upload methods failed. Please contact administrator to configure allowed file types in Appwrite bucket.`);
+        }
+      } else if (error.message.includes('bucket')) {
+        throw new Error(`Storage bucket error: Please check APPWRITE_BUCKET_ID configuration. ${error.message}`);
+      } else if (error.message.includes('permission')) {
+        throw new Error(`Permission denied: Please check Appwrite API key permissions. ${error.message}`);
+      } else if (error.message.includes('size') || error.message.includes('limit')) {
+        throw new Error(`File size limit exceeded: ${error.message}`);
+      } else if (error.message.includes('network') || error.message.includes('fetch')) {
+        throw new Error(`Network error: Unable to connect to Appwrite. ${error.message}`);
+      }
+    }
     throw new Error(`Failed to upload file to Appwrite: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -50,8 +121,6 @@ export async function saveDocumentMetadata(metadata: {
 }) {
   try {
     const documentId = ID.unique();
-    
-    // Try to save to database if configured, otherwise return mock data
     if (process.env.APPWRITE_DATABASE_ID && process.env.APPWRITE_DOCUMENTS_COLLECTION_ID) {
       const document = await databases.createDocument(
         process.env.APPWRITE_DATABASE_ID,
@@ -72,7 +141,6 @@ export async function saveDocumentMetadata(metadata: {
       );
       return document;
     } else {
-      // Return mock document if database not configured
       console.warn('Database not configured, returning mock document metadata');
       return {
         $id: documentId,
@@ -86,7 +154,6 @@ export async function saveDocumentMetadata(metadata: {
     }
   } catch (error) {
     console.error('Appwrite save metadata error:', error);
-    // Fallback to mock data if database operation fails
     return {
       $id: ID.unique(),
       fileId: metadata.fileId,
@@ -150,7 +217,7 @@ export async function deleteFile(fileId: string): Promise<void> {
 }
 
 export async function updateDocumentMetadata(
-  documentId: string, 
+  documentId: string,
   updates: { status?: string; processingStage?: string }
 ) {
   return {

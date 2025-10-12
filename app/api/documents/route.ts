@@ -76,14 +76,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-      return NextResponse.json({ 
-        error: 'File too large. Maximum size is 10MB.' 
-      }, { status: 400 });
-    }
-
+    // File size validation removed - no limit
     console.log(`Processing upload for user: ${userDetails.fullName} (${userDetails.email})`);
     console.log(`File: ${file.name}, Size: ${file.size} bytes, Type: ${file.type}`);
 
@@ -91,8 +84,8 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Upload to Appwrite with user details
-    const uploadResult = await uploadDocument(buffer, file.name, userDetails.id);
+    // Upload to Appwrite with user details and proper MIME type
+    const uploadResult = await uploadDocument(buffer, file.name, userDetails.id, file.type);
     console.log(`File uploaded to Appwrite: ${uploadResult.fileId}`);
     
     // Save document metadata to database

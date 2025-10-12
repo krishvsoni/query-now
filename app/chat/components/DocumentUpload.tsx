@@ -33,13 +33,17 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
     if (acceptedFiles.length === 0) return;
 
     const file = acceptedFiles[0];
+    
+    // Remove file size restriction - allow any size
+    console.log('Starting upload for file:', file.name, 'Type:', file.type, 'Size:', file.size);
+
     setUploading(true);
     setError(null);
     setSuccess(null);
     onUploadStart?.();
 
     try {
-      console.log('Starting upload for file:', file.name);
+      console.log('Starting upload for file:', file.name, 'Type:', file.type, 'Size:', file.size);
       
       const formData = new FormData();
       formData.append('file', file);
@@ -55,7 +59,7 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
         throw new Error(result.error || `Server error: ${response.status}`);
       }
 
-      if (result.success) {
+      if (result.success && result.document) {
         console.log('Upload successful:', result);
         setSuccess(result.message || `Successfully uploaded "${file.name}". Processing pipeline started.`);
         onUploadComplete?.(result.document, result.user);
@@ -68,12 +72,16 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
       
       let errorMessage = 'Upload failed';
       if (error instanceof Error) {
-        if (error.message.includes('Authentication required')) {
+        if (error.message.includes('Authentication required') || error.message.includes('Unauthorized')) {
           errorMessage = 'Please log in to upload documents';
-        } else if (error.message.includes('Storage service error')) {
+        } else if (error.message.includes('Storage service error') || error.message.includes('Appwrite')) {
           errorMessage = 'Storage service unavailable. Please try again later.';
-        } else if (error.message.includes('Queue service error')) {
+        } else if (error.message.includes('Queue service error') || error.message.includes('Redis')) {
           errorMessage = 'Processing queue unavailable. Please try again later.';
+        } else if (error.message.includes('Unsupported file type')) {
+          errorMessage = 'Unsupported file type. Please upload PDF, DOCX, or TXT files.';
+        } else if (error.message.includes('File type not supported') || error.message.includes('storage_file_type_unsupported')) {
+          errorMessage = 'File extension not allowed by storage service. Please try renaming the file or contact administrator.';
         } else {
           errorMessage = error.message;
         }
@@ -85,16 +93,29 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
     }
   }, [onUploadComplete, onUploadStart]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
     onDrop,
+    onDragEnter: () => {
+      // Clear previous errors when user starts dragging a new file
+      setError(null);
+      setSuccess(null);
+    },
     accept: {
       'application/pdf': ['.pdf'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
       'text/plain': ['.txt']
     },
     maxFiles: 1,
-    maxSize: 10 * 1024 * 1024, // 10MB
-    disabled: uploading
+    // Remove maxSize restriction - allow any file size
+    disabled: uploading,
+    onDropRejected: (rejectedFiles) => {
+      const rejection = rejectedFiles[0];
+      if (rejection?.errors[0]?.code === 'file-invalid-type') {
+        setError('Unsupported file type. Please upload PDF, DOCX, or TXT files.');
+      } else {
+        setError('File rejected. Please check file type.');
+      }
+    }
   });
 
   return (
@@ -116,7 +137,8 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
         {uploading ? (
           <div className="flex flex-col items-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
-            <p className="text-sm text-gray-600">Uploading...</p>
+            <p className="text-sm text-gray-600">Uploading to Appwrite...</p>
+            <p className="text-xs text-gray-500 mt-1">This may take a few moments</p>
           </div>
         ) : (
           <div className="flex flex-col items-center">
@@ -129,7 +151,7 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
                   Drag & drop a document, or <span className="text-blue-600 font-medium">browse</span>
                 </p>
                 <p className="text-xs text-gray-500 mb-2">
-                  PDF, DOCX, TXT files up to 10MB
+                  PDF, DOCX, TXT files (no size limit)
                 </p>
                 <p className="text-xs text-gray-400">
                   Will be processed through: Appwrite → Embeddings → Pinecone → Neo4j → Redis
@@ -151,9 +173,12 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
         <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-md flex items-start">
           <CheckCircleIcon className="h-5 w-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-green-700">
-            <p>{success}</p>
+            <p className="font-medium">{success}</p>
             <p className="text-xs text-green-600 mt-1">
-              Document is being processed through the AI pipeline: parsing → embeddings → knowledge graph
+              Processing pipeline: Appwrite Storage → Document Parsing → AI Embeddings → Pinecone Vector DB → Neo4j Knowledge Graph → Redis Cache
+            </p>
+            <p className="text-xs text-green-500 mt-1">
+              You can now ask questions about this document in the chat!
             </p>
           </div>
         </div>

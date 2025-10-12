@@ -33,7 +33,6 @@ export async function getUserDetails() {
     redirect("/api/auth/login");
   }
 
-  // Get additional user details
   const permissions = await getPermissions();
   const organization = await getOrganization();
 
