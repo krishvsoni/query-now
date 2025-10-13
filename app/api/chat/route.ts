@@ -3,12 +3,11 @@ import { getAuthenticatedUser } from '@/lib/auth';
 import { pipeline } from '@/lib/redis';
 import { generateEmbedding, generateStreamingResponse } from '@/lib/openai';
 import { searchSimilar } from '@/lib/pinecone';
-import { searchEntities, getEntityRelationships } from '@/lib/neo4j';
-import { getUserDocuments } from '@/lib/appwrite';
+import { searchEntities, getEntityRelationships, getUserDocuments } from '@/lib/neo4j';
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUser();
+    const user = await getAuthenticatedUser(true);
     const { query, documentIds, conversationHistory = [] } = await request.json();
 
     const queryCount = await pipeline.trackUserQuery(user.id);
@@ -17,8 +16,8 @@ export async function POST(request: NextRequest) {
     }
 
     const userDocs = await getUserDocuments(user.id);
-    const availableDocIds = userDocs.map(doc => doc.$id);
-    
+    const availableDocIds = userDocs.map((doc: any) => doc.id);
+
     const filteredDocIds = documentIds 
       ? documentIds.filter((id: string) => availableDocIds.includes(id))
       : availableDocIds;
@@ -28,11 +27,11 @@ export async function POST(request: NextRequest) {
     }
 
     const queryEmbedding = await generateEmbedding(query);
-    
+
     const cacheKey = `query:${user.id}:${Buffer.from(query).toString('base64').slice(0, 50)}`;
     const cachedEmbedding = await pipeline.getCachedEmbedding(cacheKey);
     const embedding = cachedEmbedding || queryEmbedding;
-    
+
     if (!cachedEmbedding) {
       await pipeline.cacheEmbedding(cacheKey, queryEmbedding, 3600);
     }
@@ -45,8 +44,8 @@ export async function POST(request: NextRequest) {
     const context: string[] = [];
     const relevantEntityIds: string[] = [];
 
-    vectorResults.forEach(result => {
-      if (result.score && result.score > 0.7) {
+    vectorResults.forEach((result) => {
+      if (result.score && result.score > 0.15) {
         context.push(`[${result.metadata?.fileName}]: ${result.metadata?.content}`);
       }
     });
@@ -64,7 +63,6 @@ export async function POST(request: NextRequest) {
             context.push(`Relationship: ${rel.source.name} → ${rel.relationships[0]?.type} → ${rel.target.name}`);
           });
         } catch (error) {
-          console.error('Error fetching relationships:', error);
         }
       }
     }
@@ -77,7 +75,7 @@ export async function POST(request: NextRequest) {
     }
 
     const responseStream = await generateStreamingResponse(query, context, conversationHistory);
-    
+
     const sessionId = `${user.id}_${Date.now()}`;
     let responseText = '';
 
@@ -99,7 +97,7 @@ export async function POST(request: NextRequest) {
               })}\n\n`));
             }
           }
-          
+
           const sources = [
             ...vectorResults.map(r => ({
               type: 'vector',
@@ -125,10 +123,9 @@ export async function POST(request: NextRequest) {
             type: 'sources',
             sources
           })}\n\n`));
-          
+
           controller.close();
         } catch (error) {
-          console.error('Streaming error:', error);
           controller.error(error);
         }
       }
@@ -143,7 +140,6 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Chat error:', error);
     return NextResponse.json({ error: 'Failed to process query' }, { status: 500 });
   }
 }

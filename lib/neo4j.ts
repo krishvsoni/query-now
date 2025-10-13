@@ -26,14 +26,12 @@ export async function createUserDocumentNode(
   const session = await getSession();
   
   try {
-    // Flatten metadata to avoid Neo4j Map type error
-    // Neo4j only supports primitive types as property values
+
     const flatMetadata: Record<string, string | number | boolean> = {};
     
     for (const [key, value] of Object.entries(metadata)) {
       if (value !== null && value !== undefined) {
         if (typeof value === 'object') {
-          // Convert objects to JSON strings
           flatMetadata[key] = JSON.stringify(value);
         } else {
           flatMetadata[key] = value as string | number | boolean;
@@ -50,6 +48,10 @@ export async function createUserDocumentNode(
           d.wordCount = $wordCount,
           d.fileSize = $fileSize,
           d.extractedAt = $extractedAt,
+          d.fileId = $fileId,
+          d.status = $status,
+          d.processingStage = $processingStage,
+          d.uploadedAt = $uploadedAt,
           d.createdAt = datetime()
       MERGE (u)-[:OWNS]->(d)
       RETURN d
@@ -61,7 +63,11 @@ export async function createUserDocumentNode(
         pageCount: flatMetadata.pageCount || 0,
         wordCount: flatMetadata.wordCount || 0,
         fileSize: flatMetadata.fileSize || 0,
-        extractedAt: flatMetadata.extractedAt || new Date().toISOString()
+        extractedAt: flatMetadata.extractedAt || new Date().toISOString(),
+        fileId: flatMetadata.fileId || '',
+        status: flatMetadata.status || 'uploaded',
+        processingStage: flatMetadata.processingStage || 'pending',
+        uploadedAt: flatMetadata.uploadedAt || new Date().toISOString()
       }
     );
     
@@ -197,6 +203,44 @@ export async function getUserDocuments(userId: string) {
     );
     
     return result.records.map(record => record.get('d').properties);
+  } finally {
+    await session.close();
+  }
+}
+
+export async function updateDocumentStatus(
+  documentId: string,
+  status: string,
+  processingStage: string,
+  additionalData?: Record<string, any>
+) {
+  const session = await getSession();
+  
+  try {
+    const updateFields = {
+      documentId,
+      status,
+      processingStage,
+      updatedAt: new Date().toISOString(),
+      wordCount: additionalData?.wordCount || null,
+      pageCount: additionalData?.pageCount || null,
+      ...additionalData
+    };
+
+    const result = await session.run(
+      `
+      MATCH (d:Document {id: $documentId})
+      SET d.status = $status,
+          d.processingStage = $processingStage,
+          d.updatedAt = $updatedAt
+      ${updateFields.wordCount !== null ? ', d.wordCount = $wordCount' : ''}
+      ${updateFields.pageCount !== null ? ', d.pageCount = $pageCount' : ''}
+      RETURN d
+      `,
+      updateFields
+    );
+    
+    return result.records[0]?.get('d').properties;
   } finally {
     await session.close();
   }

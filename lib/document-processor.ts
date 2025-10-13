@@ -27,9 +27,6 @@ export interface ExtractedText {
 }
 
 export class DocumentProcessor {
-  /**
-   * Extract text directly from PDF using pdf-parse-fixed
-   */
   private async extractTextFromPDF(buffer: Buffer): Promise<{ content: string; pageCount: number }> {
     try {
       const data = await pdf(buffer);
@@ -45,9 +42,6 @@ export class DocumentProcessor {
     }
   }
 
-  /**
-   * Parse and extract text based on file type
-   */
   async parseDocument(buffer: Buffer, fileName: string, mimeType: string): Promise<ExtractedText> {
     const fileExtension = fileName.split('.').pop()?.toLowerCase();
     try {
@@ -148,11 +142,13 @@ export class DocumentProcessor {
     }
   }
 
-  /**
-   * Clean up extracted text
-   */
   private cleanText(text: string): string {
-    return text
+    // Remove emojis and most pictographic symbols
+    const withoutEmojis = text.replace(
+      /[\u{1F300}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}\u{1FB00}-\u{1FBFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu,
+      ''
+    );
+    return withoutEmojis
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
       .replace(/\n{3,}/g, '\n\n')
@@ -160,9 +156,6 @@ export class DocumentProcessor {
       .trim();
   }
 
-  /**
-   * Main document processing pipeline
-   */
   async processDocument(
     documentId: string,
     userId: string,
@@ -176,32 +169,62 @@ export class DocumentProcessor {
       const extracted = await this.parseDocument(fileBuffer, fileName, mimeType);
       await createUserDocumentNode(userId, documentId, fileName, extracted.metadata);
 
+      console.log(`Extracted ${extracted.metadata.wordCount.toLocaleString()} words, ${extracted.metadata.pageCount || 0} pages from ${fileName}`);
+      console.log(`File size: ${(extracted.metadata.fileSize / 1024 / 1024).toFixed(2)} MB`);
+      
       const chunks = chunkText(extracted.content, 1000, 200);
+      console.log(`Split into ${chunks.length.toLocaleString()} chunks for processing`);
 
-      await updateDocumentStatus(documentId, 'processing', 'embedding');
+      await updateDocumentStatus(documentId, 'processing', 'embedding', {
+        wordCount: extracted.metadata.wordCount,
+        pageCount: extracted.metadata.pageCount || 0
+      });
 
-      const batchSize = 5;
+      const batchSize = chunks.length > 5000 ? 3 : chunks.length > 1000 ? 5 : 10;
+      const delayBetweenBatches = chunks.length > 1000 ? 100 : 0;
+      
+      console.log(`Processing with batch size: ${batchSize}${delayBetweenBatches > 0 ? ` (${delayBetweenBatches}ms delay)` : ''}`);
+      
+      const startTime = Date.now();
       for (let i = 0; i < chunks.length; i += batchSize) {
         const batch = chunks.slice(i, i + batchSize);
         const batchPromises = batch.map((chunk, index) =>
           this.processChunk(chunk, i + index, documentId, userId, fileName)
         );
         await Promise.all(batchPromises);
+        
+        const progress = ((i + batch.length) / chunks.length * 100).toFixed(1);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`Progress: ${i + batch.length}/${chunks.length} chunks (${progress}%) | Elapsed: ${elapsed}s`);
+        
+        if (delayBetweenBatches > 0 && i + batchSize < chunks.length) {
+          await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+        }
       }
+      
+      const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`Embedding complete: ${chunks.length} chunks in ${totalTime}s (${(chunks.length / parseFloat(totalTime)).toFixed(1)} chunks/s)`);
 
-      await updateDocumentStatus(documentId, 'processing', 'ontology');
+      await updateDocumentStatus(documentId, 'processing', 'ontology', {
+        wordCount: extracted.metadata.wordCount,
+        pageCount: extracted.metadata.pageCount || 0
+      });
+      
       await this.extractOntology(extracted.content, documentId, userId);
 
-      await updateDocumentStatus(documentId, 'completed', 'completed');
+      await updateDocumentStatus(documentId, 'completed', 'completed', {
+        wordCount: extracted.metadata.wordCount,
+        pageCount: extracted.metadata.pageCount || 0
+      });
+      
+      console.log(`Document ${documentId} processing completed successfully.`);
     } catch (error) {
+      console.error(`Error processing document ${documentId}:`, error);
       await updateDocumentStatus(documentId, 'error', 'failed');
       throw error;
     }
   }
 
-  /**
-   * Process individual text chunks (generate + store embeddings)
-   */
   private async processChunk(
     chunk: string,
     chunkIndex: number,
@@ -225,20 +248,23 @@ export class DocumentProcessor {
     }
   }
 
-  /**
-   * Extract entities and relationships from the text
-   */
   private async extractOntology(
     content: string,
     documentId: string,
     userId: string
   ): Promise<void> {
     try {
-      const maxContentLength = 10000;
-      const contentSample =
-        content.length > maxContentLength
-          ? content.substring(0, maxContentLength)
-          : content;
+      const maxContentLength = 50000;
+      let contentSample = content;
+      
+      if (content.length > maxContentLength) {
+        const sampleSize = Math.floor(maxContentLength / 3);
+        const beginning = content.slice(0, sampleSize);
+        const middle = content.slice(Math.floor(content.length / 2) - Math.floor(sampleSize / 2), Math.floor(content.length / 2) + Math.floor(sampleSize / 2));
+        const end = content.slice(-sampleSize);
+        contentSample = beginning + '\n...\n' + middle + '\n...\n' + end;
+        console.log(`Ontology extraction: Sampled ${contentSample.length.toLocaleString()} chars from ${content.length.toLocaleString()} chars`);
+      }
 
       const ontology = await extractEntitiesAndRelationships(contentSample);
 
@@ -253,7 +279,6 @@ export class DocumentProcessor {
             embedding
           );
         } catch (entityError) {
-          // Skip failed entity creation
         }
       }
 
@@ -267,7 +292,6 @@ export class DocumentProcessor {
             relationship.properties || {}
           );
         } catch (relError) {
-          // Skip failed relationship creation
         }
       }
     } catch (error) {

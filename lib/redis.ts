@@ -34,7 +34,6 @@ export class DocumentPipeline {
 
   async queueDocumentIngestion(docId: string, userId: string, fileName: string, filePath: string) {
     if (!this.redis) await this.init();
-    
     const job = {
       docId,
       userId,
@@ -43,18 +42,15 @@ export class DocumentPipeline {
       stage: 'parsing',
       timestamp: Date.now().toString()
     };
-
     await this.redis.xAdd('doc:ingestion', '*', job);
     return docId;
   }
 
   async moveToNextStage(docId: string, currentStage: string, data: any) {
     if (!this.redis) await this.init();
-    
     const stages = ['parsing', 'ontology', 'embedding', 'graph', 'completed'];
     const currentIndex = stages.indexOf(currentStage);
     const nextStage = stages[currentIndex + 1];
-
     if (nextStage) {
       const job = {
         docId,
@@ -62,7 +58,6 @@ export class DocumentPipeline {
         data: JSON.stringify(data),
         timestamp: Date.now().toString()
       };
-
       await this.redis.xAdd(`doc:${nextStage}`, '*', job);
     }
   }
@@ -83,7 +78,7 @@ export class DocumentPipeline {
     const key = `user:${userId}:queries_today`;
     const count = await this.redis.incr(key);
     if (count === 1) {
-      await this.redis.expire(key, 86400); // 24 hours
+      await this.redis.expire(key, 86400);
     }
     return count;
   }
@@ -97,7 +92,7 @@ export class DocumentPipeline {
   async bufferStreamMessage(sessionId: string, message: any) {
     if (!this.redis) await this.init();
     await this.redis.lPush(`stream:${sessionId}`, JSON.stringify(message));
-    await this.redis.expire(`stream:${sessionId}`, 300); // 5 minutes
+    await this.redis.expire(`stream:${sessionId}`, 300);
   }
 
   async getStreamMessages(sessionId: string): Promise<any[]> {
@@ -106,7 +101,6 @@ export class DocumentPipeline {
     return messages.map((msg: string) => JSON.parse(msg)).reverse();
   }
 
-  // Enhanced caching methods
   async cacheSearchResults(key: string, results: any[], ttl: number = 1800) {
     if (!this.redis) await this.init();
     await this.redis.setEx(`search:${key}`, ttl, JSON.stringify(results));
@@ -131,7 +125,6 @@ export class DocumentPipeline {
     return cached ? JSON.parse(cached) : null;
   }
 
-  // Session management
   async createChatSession(userId: string, sessionData: any): Promise<string> {
     if (!this.redis) await this.init();
     const sessionId = `session:${userId}:${Date.now()}`;
@@ -157,23 +150,19 @@ export class DocumentPipeline {
     if (!this.redis) await this.init();
     const pattern = `session:${userId}:*`;
     const keys = await this.redis.keys(pattern);
-    
-    // Filter for active sessions (last activity within 1 hour)
     const activeSessions: string[] = [];
     for (const key of keys) {
       const session = await this.redis.get(key);
       if (session) {
         const sessionData = JSON.parse(session);
-        if (Date.now() - sessionData.lastActivity < 3600000) { // 1 hour
+        if (Date.now() - sessionData.lastActivity < 3600000) {
           activeSessions.push(key);
         }
       }
     }
-    
     return activeSessions;
   }
 
-  // Agent coordination
   async publishAgentMessage(channel: string, message: any) {
     if (!this.redis) await this.init();
     await this.redis.publish(channel, JSON.stringify(message));
@@ -183,7 +172,6 @@ export class DocumentPipeline {
     if (!this.redis) await this.init();
     const subscriber = client.duplicate();
     await subscriber.connect();
-    
     await subscriber.subscribe(channel, (message) => {
       try {
         const parsed = JSON.parse(message);
@@ -192,11 +180,9 @@ export class DocumentPipeline {
         console.error('Error parsing agent message:', error);
       }
     });
-    
     return subscriber;
   }
 
-  // Task queue management
   async addToTaskQueue(queueName: string, task: any, priority: number = 0) {
     if (!this.redis) await this.init();
     await this.redis.zAdd(`queue:${queueName}`, {
@@ -216,7 +202,6 @@ export class DocumentPipeline {
     return await this.redis.zCard(`queue:${queueName}`);
   }
 
-  // Performance metrics
   async incrementCounter(key: string, ttl?: number) {
     if (!this.redis) await this.init();
     const count = await this.redis.incr(key);
@@ -236,23 +221,20 @@ export class DocumentPipeline {
     if (!this.redis) await this.init();
     const key = `latency:${operation}`;
     await this.redis.lPush(key, latency.toString());
-    await this.redis.lTrim(key, 0, 99); // Keep last 100 measurements
-    await this.redis.expire(key, 3600); // 1 hour TTL
+    await this.redis.lTrim(key, 0, 99);
+    await this.redis.expire(key, 3600);
   }
 
   async getAverageLatency(operation: string): Promise<number> {
     if (!this.redis) await this.init();
     const key = `latency:${operation}`;
     const latencies = await this.redis.lRange(key, 0, -1);
-    
     if (latencies.length === 0) return 0;
-    
     const sum = latencies.reduce((acc: number, val: string) => acc + parseFloat(val), 0);
     return sum / latencies.length;
   }
 }
 
-// Document status tracking functions
 export async function updateDocumentStatus(documentId: string, status: string, stage?: string) {
   try {
     const redis = await getRedisClient();
@@ -261,9 +243,13 @@ export async function updateDocumentStatus(documentId: string, status: string, s
       stage: stage || null,
       updatedAt: new Date().toISOString()
     };
-    
     await redis.hSet(`document:${documentId}:status`, statusData);
-    console.log(`Document ${documentId} status updated to ${status}${stage ? ` - ${stage}` : ''}`);
+    try {
+      const { updateDocumentStatus: updateNeo4jStatus } = await import('./neo4j');
+      await updateNeo4jStatus(documentId, status, stage || 'unknown');
+    } catch (neo4jError) {
+      console.warn('Could not update Neo4j document status:', neo4jError);
+    }
   } catch (error) {
     console.error('Error updating document status in Redis:', error);
   }

@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserDetails } from '@/lib/auth';
-import { uploadDocument, getUserDocuments, saveDocumentMetadata } from '@/lib/appwrite';
+import { uploadDocument } from '@/lib/appwrite';
+import { getUserDocuments, createUserDocumentNode } from '@/lib/neo4j';
 import { documentProcessor } from '@/lib/document-processor';
 import { DocumentPipeline } from '@/lib/redis';
+import { ID } from 'node-appwrite';
 
-export const runtime = 'nodejs'; 
+export const runtime = 'nodejs';
 
-/**
- * GET – Fetch user documents
- */
 export async function GET(request: NextRequest) {
   try {
-    const userDetails = await getUserDetails();
+    const userDetails = await getUserDetails(true);
 
     let documents = [];
     try {
-      documents = await getUserDocuments(userDetails.id);
+      const neo4jDocs = await getUserDocuments(userDetails.id);
+      documents = neo4jDocs;
+      console.log(`Retrieved ${documents.length} documents from Neo4j for user ${userDetails.id}`);
     } catch (error) {
-      console.warn('Could not fetch user documents:', error);
+      console.warn('Could not fetch user documents from Neo4j:', error);
+      documents = [];
     }
 
     return NextResponse.json({
@@ -27,13 +29,16 @@ export async function GET(request: NextRequest) {
         email: userDetails.email,
         fullName: userDetails.fullName,
       },
-      documents: documents.map((doc) => ({
-        id: doc.$id,
+      documents: documents.map((doc: any) => ({
+        id: doc.id,
         fileName: doc.fileName,
-        status: doc.status,
-        processingStage: doc.processingStage,
-        uploadedAt: doc.uploadedAt,
+        status: doc.status || 'unknown',
+        processingStage: doc.processingStage || 'unknown',
+        uploadedAt: doc.uploadedAt || doc.createdAt,
         fileId: doc.fileId,
+        fileSize: doc.fileSize,
+        wordCount: doc.wordCount,
+        pageCount: doc.pageCount,
       })),
       setupRequired: documents.length === 0,
     });
@@ -46,8 +51,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       {
-        error:
-          'Failed to fetch documents. Please ensure Appwrite is properly configured.',
+        error: 'Failed to fetch documents. Please check your database configuration.',
         setupRequired: true,
       },
       { status: 500 }
@@ -55,12 +59,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/**
- * POST – Upload a document, store in Appwrite, and queue for processing
- */
 export async function POST(request: NextRequest) {
   try {
-    const userDetails = await getUserDetails();
+    const userDetails = await getUserDetails(true);
     const formData = await request.formData();
     const file = formData.get('file') as File;
 
@@ -101,7 +102,6 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Upload to Appwrite
     const uploadResult = await uploadDocument(
       buffer,
       file.name,
@@ -110,36 +110,40 @@ export async function POST(request: NextRequest) {
     );
     console.log(`File uploaded to Appwrite: ${uploadResult.fileId}`);
 
-    // Save metadata to DB
-    const documentMetadata = await saveDocumentMetadata({
-      fileId: uploadResult.fileId,
-      fileName: file.name,
-      userId: userDetails.id,
-      status: 'uploaded',
-      processingStage: 'pending',
-    });
+    const documentId = ID.unique();
 
-    // Queue in Redis pipeline
+    await createUserDocumentNode(
+      userDetails.id,
+      documentId,
+      file.name,
+      {
+        fileId: uploadResult.fileId,
+        fileSize: file.size,
+        status: 'uploaded',
+        processingStage: 'pending',
+        uploadedAt: new Date().toISOString()
+      }
+    );
+
     const pipeline = new DocumentPipeline();
     await pipeline.init();
     await pipeline.queueDocumentIngestion(
-      documentMetadata.$id,
+      documentId,
       userDetails.id,
       file.name,
       uploadResult.filePath
     );
 
-    console.log(`Document queued for processing: ${documentMetadata.$id}`);
+    console.log(`Document queued for processing: ${documentId}`);
 
-    // 🔥 Process document asynchronously (background)
     setTimeout(async () => {
       try {
         console.log(
-          `Starting background pipeline for document: ${documentMetadata.$id}`
+          `Starting background pipeline for document: ${documentId}`
         );
 
         await documentProcessor.processDocument(
-          documentMetadata.$id,
+          documentId,
           userDetails.id,
           file.name,
           buffer,
@@ -147,11 +151,11 @@ export async function POST(request: NextRequest) {
         );
 
         console.log(
-          `✅ Pipeline completed successfully for document: ${documentMetadata.$id}`
+          `Pipeline completed successfully for document: ${documentId}`
         );
       } catch (err) {
         console.error(
-          `❌ Background processing failed for document: ${documentMetadata.$id}`,
+          `Background processing failed for document: ${documentId}`,
           err
         );
       }
@@ -165,7 +169,7 @@ export async function POST(request: NextRequest) {
         fullName: userDetails.fullName,
       },
       document: {
-        id: documentMetadata.$id,
+        id: documentId,
         fileName: file.name,
         status: 'uploaded',
         processingStage: 'queued',

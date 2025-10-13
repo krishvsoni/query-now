@@ -4,25 +4,22 @@ import { searchEntities, getEntityRelationships } from '@/lib/neo4j';
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUser();
+    const user = await getAuthenticatedUser(true);
     const { searchParams } = new URL(request.url);
     
     const query = searchParams.get('query') || '';
     const documentIds = searchParams.getAll('documentIds');
 
-    // Search for entities based on query or get all entities for specified documents
     const entityResults = await searchEntities(user.id, query, documentIds.length > 0 ? documentIds : undefined);
     
     const nodes: any[] = [];
     const links: any[] = [];
     const processedEntities = new Set<string>();
 
-    // Process entities and their relationships
     for (const entityResult of entityResults) {
       const entity = entityResult.entity;
       
       if (!processedEntities.has(entity.id)) {
-        // Add entity as node
         nodes.push({
           id: entity.id,
           name: entity.name || entity.id,
@@ -34,7 +31,6 @@ export async function GET(request: NextRequest) {
         
         processedEntities.add(entity.id);
 
-        // Get relationships for this entity
         try {
           const relationships = await getEntityRelationships(entity.id, 1);
           
@@ -42,7 +38,6 @@ export async function GET(request: NextRequest) {
             const sourceId = rel.source.id;
             const targetId = rel.target.id;
             
-            // Add target entity if not already processed
             if (!processedEntities.has(targetId)) {
               nodes.push({
                 id: targetId,
@@ -53,11 +48,9 @@ export async function GET(request: NextRequest) {
               processedEntities.add(targetId);
             }
             
-            // Add relationship as link
             const relationshipType = rel.relationships[0]?.type || 'RELATED';
             const linkId = `${sourceId}-${targetId}-${relationshipType}`;
             
-            // Avoid duplicate links
             if (!links.find(l => l.id === linkId)) {
               links.push({
                 id: linkId,
@@ -74,13 +67,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // If no specific query, also include some random relationships to show graph structure
     if (!query && nodes.length < 20) {
-      // This could be enhanced to get a broader sample of the graph
     }
 
     return NextResponse.json({
-      nodes: nodes.slice(0, 100), // Limit to prevent overwhelming the UI
+      nodes: nodes.slice(0, 100),
       links: links.slice(0, 200),
       metadata: {
         totalEntities: nodes.length,

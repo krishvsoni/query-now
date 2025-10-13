@@ -6,7 +6,6 @@ import { redirect } from "next/navigation";
 export default async function Home() {
   const { isAuthenticated } = getKindeServerSession();
   
-  // If user is already authenticated, redirect to chat
   if (await isAuthenticated()) {
     redirect("/chat");
   }

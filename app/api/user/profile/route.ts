@@ -3,14 +3,12 @@ import { getUserDetails, checkAuthentication } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    // Check if user is authenticated
     const isAuth = await checkAuthentication();
     if (!isAuth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get detailed user information
-    const userDetails = await getUserDetails();
+    const userDetails = await getUserDetails(true);
     
     return NextResponse.json({
       success: true,

@@ -27,9 +27,10 @@ interface Source {
 
 interface ChatInterfaceProps {
   onShowGraph?: (query: string) => void;
+  selectedDocuments?: string[];
 }
 
-export default function ChatInterface({ onShowGraph }: ChatInterfaceProps) {
+export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -76,6 +77,7 @@ export default function ChatInterface({ onShowGraph }: ChatInterfaceProps) {
         },
         body: JSON.stringify({
           query: userMessage.content,
+          documentIds: selectedDocuments.length > 0 ? selectedDocuments : undefined,
           conversationHistory: messages.slice(-10) // Keep last 10 messages for context
         }),
         signal: abortControllerRef.current.signal
@@ -203,7 +205,11 @@ export default function ChatInterface({ onShowGraph }: ChatInterfaceProps) {
       {/* Header */}
       <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200">
         <h1 className="text-xl font-semibold text-gray-900">Query Documents</h1>
-        <p className="text-sm text-gray-600">Ask questions about your uploaded documents</p>
+        <p className="text-sm text-gray-600">
+          {selectedDocuments.length > 0 
+            ? `Searching ${selectedDocuments.length} selected document${selectedDocuments.length > 1 ? 's' : ''}`
+            : 'Select documents from the sidebar to search or search all documents'}
+        </p>
       </div>
 
       {/* Messages */}

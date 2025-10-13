@@ -47,7 +47,10 @@ export default function ChatPage() {
         <div className="flex h-full">
           {/* Main Chat Area */}
           <div className="flex-1">
-            <ChatInterface onShowGraph={handleShowGraph} />
+            <ChatInterface 
+              onShowGraph={handleShowGraph} 
+              selectedDocuments={selectedDocuments}
+            />
           </div>
           
           {/* Sidebar */}
