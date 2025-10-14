@@ -6,20 +6,18 @@ import { searchSimilar } from '@/lib/pinecone';
 import { searchEntities, getEntityRelationships, getUserDocuments } from '@/lib/neo4j';
 import { reasoningEngine } from '@/lib/reasoning-engine';
 import { graphProcessor } from '@/lib/graph-processor';
+import { saveChatMessage } from '@/lib/appwrite';
 
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser(true);
     const { query, documentIds, conversationHistory = [], useAdvancedReasoning = true } = await request.json();
 
-    // Track query usage
     const queryCount = await pipeline.trackUserQuery(user.id);
-    console.log(`[Chat API] Query count for user ${user.id}: ${queryCount}/100`);
     if (queryCount > 100) {
       return NextResponse.json({ error: 'Daily query limit exceeded' }, { status: 429 });
     }
 
-    // Get accessible documents
     const userDocs = await getUserDocuments(user.id);
     const availableDocIds = userDocs.map((doc: any) => doc.id);
 
@@ -33,12 +31,10 @@ export async function POST(request: NextRequest) {
 
     const sessionId = `${user.id}_${Date.now()}`;
     
-    // Use advanced reasoning engine if enabled
     if (useAdvancedReasoning) {
       const stream = new ReadableStream({
         async start(controller) {
           try {
-            // Emit thinking status at the start
             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
               type: 'thinking',
               message: 'Analyzing your query...'
@@ -48,7 +44,6 @@ export async function POST(request: NextRequest) {
             let finalAnswer = '';
             let sources: any[] = [];
             
-            // Stream reasoning process
             for await (const chunk of reasoningEngine.streamReasoning({
               userId: user.id,
               query,
@@ -56,7 +51,6 @@ export async function POST(request: NextRequest) {
               conversationHistory
             })) {
               
-              // Emit reasoning steps to client
               if (chunk.type === 'reasoning_step') {
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
                   type: 'reasoning',
@@ -64,7 +58,6 @@ export async function POST(request: NextRequest) {
                 })}\n\n`));
               }
               
-              // Emit tool execution updates
               if (chunk.type === 'tool_execution') {
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
                   type: 'tool',
@@ -72,7 +65,6 @@ export async function POST(request: NextRequest) {
                 })}\n\n`));
               }
               
-              // Emit refinement progress
               if (chunk.type === 'refinement') {
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
                   type: 'refinement',
@@ -80,7 +72,6 @@ export async function POST(request: NextRequest) {
                 })}\n\n`));
               }
               
-              // Final answer - stream it word by word
               if (chunk.type === 'final_answer') {
                 finalAnswer = chunk.data.answer;
                 const words = finalAnswer.split(' ');
@@ -93,7 +84,6 @@ export async function POST(request: NextRequest) {
                   await new Promise(resolve => setTimeout(resolve, 30));
                 }
                 
-                // Extract entity IDs from reasoning chain
                 const reasoning = chunk.data.reasoning;
                 reasoning.steps.forEach((step: any) => {
                   if (step.metadata?.entities) {
@@ -101,7 +91,6 @@ export async function POST(request: NextRequest) {
                   }
                 });
                 
-                // Extract sources from tool results
                 const toolResults = chunk.data.toolResults || [];
                 toolResults.forEach((result: any) => {
                   if (result.tool === 'vector_search' && Array.isArray(result.data)) {
@@ -124,12 +113,32 @@ export async function POST(request: NextRequest) {
                           entity: item.entity.name,
                           entityType: item.entity.type
                         });
+                        if (item.entity.id) {
+                          relevantEntityIds.push(item.entity.id);
+                        }
                       }
                     });
+                  } else if (result.tool === 'relationship_path' && Array.isArray(result.data)) {
+                    result.data.forEach((path: any) => {
+                      if (path.nodes) {
+                        path.nodes.forEach((node: any) => {
+                          if (node.id && !relevantEntityIds.includes(node.id)) {
+                            relevantEntityIds.push(node.id);
+                          }
+                        });
+                      }
+                    });
+                  } else if (result.tool === 'graph_traversal' && result.data) {
+                    if (result.data.entities) {
+                      result.data.entities.forEach((entity: any) => {
+                        if (entity.id && !relevantEntityIds.includes(entity.id)) {
+                          relevantEntityIds.push(entity.id);
+                        }
+                      });
+                    }
                   }
                 });
                 
-                // Emit sources
                 controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
                   type: 'sources',
                   sources
@@ -137,7 +146,6 @@ export async function POST(request: NextRequest) {
               }
             }
             
-            // Generate query-specific knowledge graph
             if (relevantEntityIds.length > 0) {
               try {
                 const queryKnowledgeGraph = await graphProcessor.buildQueryKnowledgeGraph(
@@ -157,20 +165,30 @@ export async function POST(request: NextRequest) {
                   timestamp: Date.now()
                 });
               } catch (error) {
-                console.error('Error generating knowledge graph:', error);
               }
             }
             
-            // Send metadata
             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
               type: 'metadata',
               sessionId,
               timestamp: Date.now()
             })}\n\n`));
             
+            saveChatMessage(user.id, sessionId, 'user', query, {
+              documentIds: filteredDocIds
+            }).catch(err => {});
+            
+            saveChatMessage(user.id, sessionId, 'assistant', finalAnswer, {
+              sources,
+              knowledgeGraph: relevantEntityIds.length > 0 ? {
+                entityIds: relevantEntityIds,
+                nodeCount: relevantEntityIds.length
+              } : undefined,
+              documentIds: filteredDocIds
+            }).catch(err => {});
+            
             controller.close();
           } catch (error) {
-            console.error('Streaming error:', error);
             controller.error(error);
           }
         }
@@ -185,8 +203,6 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    // Fallback to simple mode (legacy)
-    console.log('[Chat API] Using simple mode (legacy)');
     const queryEmbedding = await generateEmbedding(query);
 
     const cacheKey = `query:${user.id}:${Buffer.from(query).toString('base64').slice(0, 50)}`;
@@ -194,10 +210,7 @@ export async function POST(request: NextRequest) {
     const embedding = cachedEmbedding || queryEmbedding;
 
     if (!cachedEmbedding) {
-      console.log('[Chat API] Embedding not cached, storing in Redis...');
       await pipeline.cacheEmbedding(cacheKey, queryEmbedding, 3600);
-    } else {
-      console.log('[Chat API] Using cached embedding from Redis');
     }
 
     const [vectorResults, graphResults] = await Promise.all([
@@ -302,7 +315,6 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Chat API error:', error);
     return NextResponse.json({ error: 'Failed to process query' }, { status: 500 });
   }
 }
