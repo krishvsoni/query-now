@@ -30,24 +30,24 @@ export async function extractEntitiesAndRelationships(text: string) {
           {
             "entities": [
               {
-                "id": "unique_id",
                 "name": "Entity Name",
-                "type": "PERSON|ORGANIZATION|CONCEPT|LOCATION|EVENT|etc",
+                "type": "PERSON|ORGANIZATION|CONCEPT|LOCATION|EVENT|DOCUMENT|AGREEMENT|DATE|etc",
                 "description": "Brief description",
                 "properties": {"key": "value"}
               }
             ],
             "relationships": [
               {
-                "source": "source_entity_id",
-                "target": "target_entity_id", 
-                "type": "WORKS_FOR|LOCATED_IN|PART_OF|etc",
-                "properties": {"strength": 0.8, "context": "explanation"}
+                "from": "source_entity_name",
+                "to": "target_entity_name", 
+                "type": "WORKS_FOR|OWNS|FOUNDED|SIGNED|GRANTS|MANAGES|etc",
+                "properties": {"context": "explanation"}
               }
             ]
           }
           
-          Focus on the most important entities and meaningful relationships.`
+          Focus on the most important entities (people, organizations, concepts, agreements, dates) and meaningful relationships.
+          Make sure entity names are consistent between entities and relationships.`
         },
         {
           role: 'user',
@@ -56,9 +56,13 @@ export async function extractEntitiesAndRelationships(text: string) {
       ],
       response_format: { type: 'json_object' }
     });
-    return JSON.parse(response.choices[0].message.content || '{"entities":[],"relationships":[]}');
+    
+    const result = JSON.parse(response.choices[0].message.content || '{"entities":[],"relationships":[]}');
+    console.log(`[OpenAI] Extracted ${result.entities?.length || 0} entities and ${result.relationships?.length || 0} relationships`);
+    
+    return result;
   } catch (error) {
-    console.error('Error extracting entities:', error);
+    console.error('[OpenAI] Error extracting entities:', error);
     throw error;
   }
 }

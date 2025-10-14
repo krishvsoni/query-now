@@ -8,7 +8,6 @@ import {
   XMarkIcon 
 } from '@heroicons/react/24/outline';
 
-// Dynamically import react-force-graph-2d to avoid SSR issues
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
   ssr: false,
   loading: () => <div className="flex items-center justify-center h-64">Loading graph...</div>
@@ -42,13 +41,17 @@ interface GraphVisualizationProps {
   onClose: () => void;
   query?: string;
   documentIds?: string[];
+  mode?: 'central' | 'document' | 'query';
+  preloadedGraphData?: { nodes: any[]; edges: any[] }; 
 }
 
 export default function GraphVisualization({ 
   isOpen, 
   onClose, 
   query, 
-  documentIds 
+  documentIds,
+  mode = 'query',
+  preloadedGraphData
 }: GraphVisualizationProps) {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [loading, setLoading] = useState(false);
@@ -56,9 +59,9 @@ export default function GraphVisualization({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedNodeTypes, setSelectedNodeTypes] = useState<string[]>([]);
   const [filteredData, setFilteredData] = useState<GraphData>({ nodes: [], links: [] });
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const fgRef = useRef<any>(null);
 
-  // Node type configurations
   const nodeTypeConfig = {
     PERSON: { color: '#3B82F6', size: 8 },
     ORGANIZATION: { color: '#10B981', size: 10 },
@@ -72,36 +75,37 @@ export default function GraphVisualization({
 
   const fetchGraphData = async () => {
     if (!isOpen) return;
+    
+    if (preloadedGraphData) {
+      const processedData = processGraphData(preloadedGraphData);
+      setGraphData(processedData);
+      setFilteredData(processedData);
+      const types = [...new Set(processedData.nodes.map(n => n.type))];
+      setSelectedNodeTypes(types);
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
       const params = new URLSearchParams();
+      params.append('mode', mode);
       if (query) params.append('query', query);
       if (documentIds && documentIds.length > 0) {
         documentIds.forEach(id => params.append('documentIds', id));
       }
-
       const response = await fetch(`/api/graph?${params.toString()}`);
-      
       if (!response.ok) {
         throw new Error('Failed to fetch graph data');
       }
-
       const data = await response.json();
-      
-      // Process and enhance the graph data
       const processedData = processGraphData(data);
       setGraphData(processedData);
       setFilteredData(processedData);
-
-      // Get unique node types for filtering
       const types = [...new Set(processedData.nodes.map(n => n.type))];
       setSelectedNodeTypes(types);
-
     } catch (err) {
-      console.error('Error fetching graph data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load graph');
     } finally {
       setLoading(false);
@@ -109,85 +113,58 @@ export default function GraphVisualization({
   };
 
   const processGraphData = (rawData: any): GraphData => {
-    const nodes = rawData.nodes?.map((node: any) => {
+    const rawNodes = rawData.nodes || [];
+    const rawLinks = rawData.links || rawData.edges || [];
+    const nodes = rawNodes.map((node: any) => {
       const config = nodeTypeConfig[node.type as keyof typeof nodeTypeConfig] || nodeTypeConfig.default;
       return {
-        ...node,
+        id: node.id,
+        name: node.label || node.name || node.id,
+        type: node.type || 'CONCEPT',
+        description: node.properties?.description || node.description || '',
         size: config.size,
         color: config.color,
         group: Object.keys(nodeTypeConfig).indexOf(node.type) || 0
       };
-    }) || [];
-
-    const links = rawData.links?.map((link: any) => ({
-      ...link,
+    });
+    const links = rawLinks.map((link: any) => ({
+      source: link.source,
+      target: link.target,
+      type: link.type || 'RELATED_TO',
       color: '#94A3B8',
-      strength: link.strength || 1
-    })) || [];
-
+      strength: link.properties?.strength || link.strength || 1
+    }));
     return { nodes, links };
   };
 
   useEffect(() => {
     fetchGraphData();
-  }, [isOpen, query, documentIds]);
+  }, [isOpen, query, documentIds, mode, preloadedGraphData]);
 
   useEffect(() => {
-    // Filter data based on search term and selected node types
     const filtered = {
       nodes: graphData.nodes.filter(node => {
         const matchesSearch = !searchTerm || 
           node.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (node.description && node.description.toLowerCase().includes(searchTerm.toLowerCase()));
-        
         const matchesType = selectedNodeTypes.includes(node.type);
-        
         return matchesSearch && matchesType;
       }),
       links: graphData.links.filter(link => {
         const sourceNode = graphData.nodes.find(n => n.id === link.source);
         const targetNode = graphData.nodes.find(n => n.id === link.target);
-        
         return sourceNode && targetNode && 
                selectedNodeTypes.includes(sourceNode.type) && 
                selectedNodeTypes.includes(targetNode.type);
       })
     };
-
     setFilteredData(filtered);
   }, [searchTerm, selectedNodeTypes, graphData]);
 
-  const handleNodeClick = (node: any) => {
-    console.log('Node clicked:', node);
-    // You could open a details panel or highlight related nodes
-  };
+  const handleNodeClick = (node: any) => {};
 
   const handleNodeHover = (node: any | null) => {
-    // Highlight connected nodes
-    if (fgRef.current) {
-      const highlightNodes = new Set();
-      const highlightLinks = new Set();
-
-      if (node) {
-        highlightNodes.add(node.id);
-        
-        filteredData.links.forEach(link => {
-          if (link.source === node.id || link.target === node.id) {
-            highlightLinks.add(link);
-            highlightNodes.add(typeof link.source === 'string' ? link.source : link.source);
-            highlightNodes.add(typeof link.target === 'string' ? link.target : link.target);
-          }
-        });
-      }
-
-      fgRef.current.nodeColor((n: Node) => 
-        !node || highlightNodes.has(n.id) ? n.color : '#D1D5DB'
-      );
-      
-      fgRef.current.linkColor((link: Link) =>
-        !node || highlightLinks.has(link) ? link.color : '#E5E7EB'
-      );
-    }
+    setHoveredNode(node ? node.id : null);
   };
 
   const toggleNodeType = (type: string) => {
@@ -197,16 +174,39 @@ export default function GraphVisualization({
         : [...prev, type]
     );
   };
+  
+  const paintNode = (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+    const label = node.name;
+    const fontSize = 12 / globalScale;
+    ctx.font = `${fontSize}px Sans-Serif`;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, node.size, 0, 2 * Math.PI, false);
+    ctx.fillStyle = node.color;
+    ctx.fill();
+    if (hoveredNode === node.id) {
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2 / globalScale;
+      ctx.stroke();
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#333';
+    ctx.fillText(label, node.x, node.y + node.size + fontSize);
+  };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-5/6 flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Knowledge Graph</h2>
+            <h2 className="text-lg font-semibold text-gray-900">
+              Knowledge Graph
+              {mode === 'central' && ' - All Documents'}
+              {mode === 'document' && ' - Single Document'}
+              {mode === 'query' && ' - Query Results'}
+            </h2>
             {query && (
               <p className="text-sm text-gray-600">Related to: "{query}"</p>
             )}
@@ -218,10 +218,7 @@ export default function GraphVisualization({
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
-
-        {/* Controls */}
         <div className="flex items-center space-x-4 p-4 border-b border-gray-200 bg-gray-50">
-          {/* Search */}
           <div className="flex-1 relative">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
@@ -232,8 +229,6 @@ export default function GraphVisualization({
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm"
             />
           </div>
-
-          {/* Node type filters */}
           <div className="flex items-center space-x-2">
             <AdjustmentsHorizontalIcon className="h-4 w-4 text-gray-500" />
             <div className="flex flex-wrap gap-1">
@@ -258,8 +253,6 @@ export default function GraphVisualization({
             </div>
           </div>
         </div>
-
-        {/* Graph */}
         <div className="flex-1 relative">
           {loading ? (
             <div className="flex items-center justify-center h-full">
@@ -292,10 +285,19 @@ export default function GraphVisualization({
               nodeLabel={(node: any) => `${node.name} (${node.type})`}
               nodeColor={(node: any) => node.color}
               nodeVal={(node: any) => node.size}
+              nodeCanvasObject={paintNode}
+              nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, node.size * 1.5, 0, 2 * Math.PI, false);
+                ctx.fill();
+              }}
               linkColor={(link: any) => link.color}
               linkWidth={(link: any) => Math.sqrt(link.strength || 1)}
+              linkDirectionalParticles={2}
+              linkDirectionalParticleWidth={2}
               onNodeClick={handleNodeClick}
-              onNodeHover={(node: any) => handleNodeHover(node)}
+              onNodeHover={handleNodeHover}
               cooldownTicks={100}
               d3AlphaDecay={0.02}
               d3VelocityDecay={0.3}
@@ -305,15 +307,12 @@ export default function GraphVisualization({
             />
           )}
         </div>
-
-        {/* Legend */}
         <div className="p-4 border-t border-gray-200 bg-gray-50">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4 text-sm text-gray-600">
               <span>{filteredData.nodes.length} nodes</span>
               <span>{filteredData.links.length} connections</span>
             </div>
-            
             <div className="flex items-center space-x-3 text-xs">
               {Object.entries(nodeTypeConfig).filter(([type]) => type !== 'default').map(([type, config]) => (
                 <div key={type} className="flex items-center space-x-1">

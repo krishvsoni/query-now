@@ -267,33 +267,64 @@ export class DocumentProcessor {
       }
 
       const ontology = await extractEntitiesAndRelationships(contentSample);
+      
+      console.log(`[Ontology] Extracted ${ontology.entities.length} entities and ${ontology.relationships.length} relationships`);
 
+      // Create a map to track created entity IDs
+      const entityNameToId = new Map<string, string>();
+      
+      let entitySuccessCount = 0;
+      let entityErrorCount = 0;
+      
       for (const entity of ontology.entities) {
         try {
+          const entityId = `${documentId}_entity_${entity.name.replace(/\s+/g, '_')}`;
           const embedding = await generateEmbedding(JSON.stringify(entity));
+          
           await createEntity(
             documentId,
-            `${documentId}_entity_${entity.name.replace(/\s+/g, '_')}`,
+            entityId,
             entity.type,
-            entity.properties || {},
+            { ...entity.properties, name: entity.name, description: entity.description },
             embedding
           );
+          
+          // Track the entity for relationship creation
+          entityNameToId.set(entity.name, entityId);
+          entitySuccessCount++;
         } catch (entityError) {
+          entityErrorCount++;
+          console.error(`[Ontology] Failed to create entity ${entity.name}:`, entityError instanceof Error ? entityError.message : entityError);
         }
       }
+      
+      console.log(`[Ontology] Entities: ${entitySuccessCount} created, ${entityErrorCount} failed`);
 
+      let relSuccessCount = 0;
+      let relErrorCount = 0;
+      
       for (const relationship of ontology.relationships) {
         try {
+          // Use the mapped entity IDs if available, otherwise fall back to name-based IDs
+          const sourceId = entityNameToId.get(relationship.from) || 
+            `${documentId}_entity_${relationship.from.replace(/\s+/g, '_')}`;
+          const targetId = entityNameToId.get(relationship.to) || 
+            `${documentId}_entity_${relationship.to.replace(/\s+/g, '_')}`;
+          
           await createRelationship(
-            documentId,
-            `${documentId}_entity_${relationship.from.replace(/\s+/g, '_')}`,
-            `${documentId}_entity_${relationship.to.replace(/\s+/g, '_')}`,
+            sourceId,
+            targetId,
             relationship.type,
             relationship.properties || {}
           );
+          relSuccessCount++;
         } catch (relError) {
+          relErrorCount++;
+          console.error(`[Ontology] Failed to create relationship ${relationship.from} -> ${relationship.to}:`, relError instanceof Error ? relError.message : relError);
         }
       }
+      
+      console.log(`[Ontology] Relationships: ${relSuccessCount} created, ${relErrorCount} failed`);
     } catch (error) {
       throw error;
     }

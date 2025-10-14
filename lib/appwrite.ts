@@ -1,4 +1,4 @@
-import { Client, Storage, Databases, ID } from 'node-appwrite';
+import { Client, Storage, Databases, ID, Query } from 'node-appwrite';
 
 const validateEnvironment = () => {
   const required = [
@@ -225,4 +225,129 @@ export async function updateDocumentMetadata(
     ...updates,
     updatedAt: new Date().toISOString()
   };
+}
+
+// Chat History Functions
+const CHAT_DATABASE_ID = process.env.APPWRITE_DATABASE_ID;
+const CHAT_COLLECTION_ID = process.env.APPWRITE_CHAT_COLLECTION_ID;
+
+export async function saveChatMessage(
+  userId: string,
+  sessionId: string,
+  role: 'user' | 'assistant',
+  content: string,
+  metadata?: {
+    sources?: any[];
+    reasoningChain?: any[];
+    knowledgeGraph?: any;
+    documentIds?: string[];
+  }
+) {
+  try {
+    const chatMessage = await databases.createDocument(
+      CHAT_DATABASE_ID,
+      CHAT_COLLECTION_ID,
+      ID.unique(),
+      {
+        userId,
+        sessionId,
+        role,
+        content,
+        metadata: JSON.stringify(metadata || {}),
+        timestamp: new Date().toISOString(),
+        createdAt: new Date().toISOString()
+      },
+      [
+        `read("user:${userId}")`,
+        `write("user:${userId}")`
+      ]
+    );
+    
+    console.log(`[Appwrite] Chat message saved: ${chatMessage.$id}`);
+    return chatMessage;
+  } catch (error) {
+    console.error('[Appwrite] Error saving chat message:', error);
+    // Don't throw - chat history is not critical
+    return null;
+  }
+}
+
+export async function getChatHistory(
+  userId: string,
+  sessionId?: string,
+  limit: number = 50
+) {
+  try {
+    const queries: string[] = [
+      Query.equal('userId', userId),
+      Query.orderDesc('createdAt'),
+      Query.limit(limit)
+    ];
+    
+    if (sessionId) {
+      queries.push(Query.equal('sessionId', sessionId));
+    }
+    
+    const response = await databases.listDocuments(
+      CHAT_DATABASE_ID,
+      CHAT_COLLECTION_ID,
+      queries
+    );
+    
+    return response.documents.map(doc => ({
+      id: doc.$id,
+      userId: doc.userId,
+      sessionId: doc.sessionId,
+      role: doc.role,
+      content: doc.content,
+      metadata: JSON.parse(doc.metadata || '{}'),
+      timestamp: doc.timestamp,
+      createdAt: doc.createdAt
+    }));
+  } catch (error) {
+    console.error('[Appwrite] Error fetching chat history:', error);
+    return [];
+  }
+}
+
+export async function getChatSessions(userId: string) {
+  try {
+    const response = await databases.listDocuments(
+      CHAT_DATABASE_ID,
+      CHAT_COLLECTION_ID,
+      [
+        Query.equal('userId', userId),
+        Query.orderDesc('createdAt'),
+        Query.limit(100)
+      ]
+    );
+    
+    // Group by session
+    const sessions = new Map<string, any>();
+    response.documents.forEach(doc => {
+      const sessionId = doc.sessionId;
+      if (!sessions.has(sessionId)) {
+        sessions.set(sessionId, {
+          sessionId,
+          lastMessage: doc.content,
+          timestamp: doc.timestamp,
+          messageCount: 1
+        });
+      } else {
+        const session = sessions.get(sessionId)!;
+        session.messageCount++;
+        if (new Date(doc.timestamp) > new Date(session.timestamp)) {
+          session.lastMessage = doc.content;
+          session.timestamp = doc.timestamp;
+        }
+      }
+    });
+    
+    return Array.from(sessions.values()).sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  } catch (error) {
+    console.error('[Appwrite] Error fetching chat sessions:', error);
+    return [];
+  }
 }

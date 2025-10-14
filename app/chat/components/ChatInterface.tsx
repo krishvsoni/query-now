@@ -37,7 +37,7 @@ interface ReasoningStep {
 }
 
 interface ChatInterfaceProps {
-  onShowGraph?: (query: string) => void;
+  onShowGraph?: (query: string, mode?: 'central' | 'document' | 'query', graphData?: { nodes: any[]; edges: any[] }) => void;
   selectedDocuments?: string[];
 }
 
@@ -163,7 +163,11 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
                   // Knowledge graph for this response
                   knowledgeGraph = parsed.graph;
                   setCurrentKnowledgeGraph(knowledgeGraph);
-                  console.log('[Knowledge Graph] Received graph with', parsed.graph?.nodes?.length || 0, 'nodes');
+                  console.log('[Knowledge Graph] Received graph:', {
+                    nodes: parsed.graph?.nodes?.length || 0,
+                    edges: parsed.graph?.edges?.length || 0,
+                    sampleNodes: parsed.graph?.nodes?.slice(0, 3)
+                  });
                 } else if (parsed.type === 'metadata') {
                   // Metadata
                   console.log('[Session Metadata]:', parsed);
@@ -382,21 +386,23 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
                 <div className="mt-2 flex space-x-2">
                   {message.sources && message.sources.length > 0 && (
                     <button
-                      onClick={() => onShowGraph?.(message.content)}
-                      className="text-xs text-blue-600 hover:text-blue-800 underline"
+                      onClick={() => onShowGraph?.('', 'central')}
+                      className="text-xs px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md font-medium"
                     >
-                      View Central Knowledge Graph
+                      📊 Central Knowledge Graph
                     </button>
                   )}
                   {message.knowledgeGraph && (
                     <button
                       onClick={() => {
-                        // Could open a modal or expand inline
-                        console.log('Query-specific knowledge graph:', message.knowledgeGraph);
+                        // Get the user's original query from the messages
+                        const userMessageIndex = messages.findIndex(m => m.id === message.id) - 1;
+                        const userQuery = userMessageIndex >= 0 ? messages[userMessageIndex]?.content : '';
+                        onShowGraph?.(userQuery || message.content, 'query', message.knowledgeGraph);
                       }}
-                      className="text-xs text-purple-600 hover:text-purple-800 underline"
+                      className="text-xs px-2 py-1 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-md font-medium"
                     >
-                      View Query Graph ({message.knowledgeGraph.nodes?.length || 0} nodes)
+                      🔍 Query Graph ({message.knowledgeGraph.nodes?.length || 0} nodes)
                     </button>
                   )}
                 </div>

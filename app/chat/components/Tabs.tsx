@@ -27,7 +27,6 @@ export default function Tabs({ tabs, defaultTab }: TabsProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tab Navigation */}
       <div className="flex border-b border-gray-200 bg-white">
         {tabs.map((tab) => {
           const Icon = tab.icon;
@@ -52,7 +51,6 @@ export default function Tabs({ tabs, defaultTab }: TabsProps) {
         })}
       </div>
 
-      {/* Tab Content */}
       <div className="flex-1 overflow-hidden">
         {activeTabData?.component}
       </div>

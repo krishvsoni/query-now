@@ -6,18 +6,24 @@ import ChatInterface from './components/ChatInterface';
 import DocumentUpload from './components/DocumentUpload';
 import DocumentList from './components/DocumentList';
 import GraphVisualization from './components/GraphVisualization';
+import ChatHistory from './components/ChatHistory';
 import { 
   ChatBubbleLeftRightIcon, 
   DocumentTextIcon, 
   CloudArrowUpIcon,
-  ShareIcon
+  ShareIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 
 export default function ChatPage() {
   const [refreshDocuments, setRefreshDocuments] = useState(0);
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [showGraph, setShowGraph] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [graphQuery, setGraphQuery] = useState<string>('');
+  const [graphMode, setGraphMode] = useState<'central' | 'document' | 'query'>('query');
+  const [graphData, setGraphData] = useState<{ nodes: any[]; edges: any[] } | undefined>(undefined);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string; fullName: string } | null>(null);
 
   const handleUploadComplete = (document: any, user: any) => {
@@ -33,9 +39,23 @@ export default function ChatPage() {
     );
   };
 
-  const handleShowGraph = (query: string) => {
+  const handleShowGraph = (query: string, mode: 'central' | 'document' | 'query' = 'query', preloadedData?: { nodes: any[]; edges: any[] }) => {
     setGraphQuery(query);
+    setGraphMode(mode);
+    setGraphData(preloadedData);
     setShowGraph(true);
+  };
+  
+  const handleShowCentralGraph = () => {
+    setGraphQuery('');
+    setGraphMode('central');
+    setGraphData(undefined); // Clear preloaded data for central graph
+    setShowGraph(true);
+  };
+  
+  const handleLoadSession = (sessionId: string) => {
+    setCurrentSessionId(sessionId);
+    // Trigger chat interface to load this session
   };
 
   const tabs = [
@@ -221,14 +241,49 @@ export default function ChatPage() {
   ];
 
   return (
-    <div className="h-screen bg-gray-100">
+    <div className="h-screen bg-gray-100 relative">
       <Tabs tabs={tabs} defaultTab="chat" />
+      
+      {/* Floating Buttons */}
+      <div className="fixed bottom-6 right-6 flex flex-col space-y-3 z-40">
+        {/* History Button */}
+        <button
+          onClick={() => setShowHistory(true)}
+          className="bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-full shadow-lg transition-all hover:scale-110 group"
+          title="View Chat History"
+        >
+          <ClockIcon className="h-6 w-6" />
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-sm px-3 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            Chat History
+          </span>
+        </button>
+        
+        {/* Central Graph Button */}
+        <button
+          onClick={handleShowCentralGraph}
+          className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-all hover:scale-110 group"
+          title="View Central Knowledge Graph"
+        >
+          <ShareIcon className="h-6 w-6" />
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-sm px-3 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            Central Knowledge Graph
+          </span>
+        </button>
+      </div>
       
       <GraphVisualization
         isOpen={showGraph}
         onClose={() => setShowGraph(false)}
         query={graphQuery}
         documentIds={selectedDocuments}
+        mode={graphMode}
+        preloadedGraphData={graphData}
+      />
+      
+      <ChatHistory
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+        onLoadSession={handleLoadSession}
       />
     </div>
   );

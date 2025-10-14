@@ -234,49 +234,67 @@ export class GraphProcessor {
       const entityResult = await session.run(
         `
         MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
-        WHERE NOT e.isDuplicate = true
-        RETURN e
+        WHERE e.isDuplicate IS NULL OR e.isDuplicate <> true
+        RETURN e.id as entityId, e.name as name, e.type as type, e.description as description, e
         LIMIT 500
         `,
         { userId }
       );
+      
+      console.log(`[Graph Processor] Found ${entityResult.records.length} entities for user ${userId}`);
       
       // Get all relationships
       const relResult = await session.run(
         `
         MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e1:Entity)
         MATCH (e1)-[r]->(e2:Entity)
-        WHERE NOT e1.isDuplicate = true AND NOT e2.isDuplicate = true
-        RETURN e1, r, e2, type(r) as relType
+        WHERE (e1.isDuplicate IS NULL OR e1.isDuplicate <> true) 
+          AND (e2.isDuplicate IS NULL OR e2.isDuplicate <> true)
+        RETURN e1.id as sourceId, e2.id as targetId, e1, r, e2, type(r) as relType
         LIMIT 1000
         `,
         { userId }
       );
       
+      console.log(`[Graph Processor] Found ${relResult.records.length} relationships for user ${userId}`);
+      
       const nodes = entityResult.records.map(record => {
+        const entityId = record.get('entityId');
+        const name = record.get('name');
+        const type = record.get('type');
+        const description = record.get('description');
         const entity = record.get('e');
+        const props = entity.properties;
+        
         return {
-          id: entity.properties.id,
-          label: entity.properties.name || entity.properties.id,
-          type: entity.properties.type || 'Unknown',
-          properties: entity.properties
+          id: entityId,
+          label: name || entityId,
+          type: type || 'CONCEPT',
+          properties: {
+            ...props,
+            id: entityId,
+            name: name || entityId,
+            description: description || ''
+          }
         };
       });
       
       const edges = relResult.records.map((record, idx) => {
-        const source = record.get('e1');
-        const target = record.get('e2');
+        const sourceId = record.get('sourceId');
+        const targetId = record.get('targetId');
         const rel = record.get('r');
         const relType = record.get('relType');
         
         return {
           id: `rel-${idx}`,
-          source: source.properties.id,
-          target: target.properties.id,
+          source: sourceId,
+          target: targetId,
           type: relType,
           properties: rel.properties || {}
         };
       });
+      
+      console.log(`[Graph Processor] Central KG built: ${nodes.length} nodes, ${edges.length} edges`);
       
       const knowledgeGraph: KnowledgeGraph = {
         nodes,
@@ -306,46 +324,64 @@ export class GraphProcessor {
       const entityResult = await session.run(
         `
         MATCH (u:User {id: $userId})-[:OWNS]->(d:Document {id: $documentId})-[:CONTAINS]->(e:Entity)
-        WHERE NOT e.isDuplicate = true
-        RETURN e
+        WHERE e.isDuplicate IS NULL OR e.isDuplicate <> true
+        RETURN e.id as entityId, e.name as name, e.type as type, e.description as description, e
         `,
         { userId, documentId }
       );
+      
+      console.log(`[Graph Processor] Found ${entityResult.records.length} entities for document ${documentId}`);
       
       const relResult = await session.run(
         `
         MATCH (u:User {id: $userId})-[:OWNS]->(d:Document {id: $documentId})-[:CONTAINS]->(e1:Entity)
         MATCH (e1)-[r]->(e2:Entity)
-        WHERE NOT e1.isDuplicate = true AND NOT e2.isDuplicate = true
-        RETURN e1, r, e2, type(r) as relType
+        WHERE (e1.isDuplicate IS NULL OR e1.isDuplicate <> true)
+          AND (e2.isDuplicate IS NULL OR e2.isDuplicate <> true)
+        RETURN e1.id as sourceId, e2.id as targetId, e1, r, e2, type(r) as relType
         `,
         { userId, documentId }
       );
       
+      console.log(`[Graph Processor] Found ${relResult.records.length} relationships for document ${documentId}`);
+      
       const nodes = entityResult.records.map(record => {
+        const entityId = record.get('entityId');
+        const name = record.get('name');
+        const type = record.get('type');
+        const description = record.get('description');
         const entity = record.get('e');
+        const props = entity.properties;
+        
         return {
-          id: entity.properties.id,
-          label: entity.properties.name || entity.properties.id,
-          type: entity.properties.type || 'Unknown',
-          properties: entity.properties
+          id: entityId,
+          label: name || entityId,
+          type: type || 'CONCEPT',
+          properties: {
+            ...props,
+            id: entityId,
+            name: name || entityId,
+            description: description || ''
+          }
         };
       });
       
       const edges = relResult.records.map((record, idx) => {
-        const source = record.get('e1');
-        const target = record.get('e2');
+        const sourceId = record.get('sourceId');
+        const targetId = record.get('targetId');
         const rel = record.get('r');
         const relType = record.get('relType');
         
         return {
           id: `rel-${idx}`,
-          source: source.properties.id,
-          target: target.properties.id,
+          source: sourceId,
+          target: targetId,
           type: relType,
           properties: rel.properties || {}
         };
       });
+      
+      console.log(`[Graph Processor] Document KG built for ${documentId}: ${nodes.length} nodes, ${edges.length} edges`);
       
       return {
         nodes,
@@ -377,13 +413,15 @@ export class GraphProcessor {
       const result = await session.run(
         `
         MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
-        WHERE e.id IN $entityIds AND NOT e.isDuplicate = true
+        WHERE e.id IN $entityIds AND (e.isDuplicate IS NULL OR e.isDuplicate <> true)
         OPTIONAL MATCH (e)-[r]-(connected:Entity)
-        WHERE NOT connected.isDuplicate = true
+        WHERE connected.isDuplicate IS NULL OR connected.isDuplicate <> true
         RETURN e, collect(distinct {rel: r, node: connected, relType: type(r)}) as connections
         `,
         { userId, entityIds: relevantEntityIds }
       );
+      
+      console.log(`[Graph Processor] Query graph: Found ${result.records.length} entities with connections`);
       
       const nodes: any[] = [];
       const edges: any[] = [];
@@ -393,36 +431,46 @@ export class GraphProcessor {
       result.records.forEach(record => {
         const entity = record.get('e');
         const connections = record.get('connections');
+        const props = entity.properties;
         
-        if (!seenNodes.has(entity.properties.id)) {
+        if (!seenNodes.has(props.id)) {
           nodes.push({
-            id: entity.properties.id,
-            label: entity.properties.name || entity.properties.id,
-            type: entity.properties.type || 'Unknown',
-            properties: entity.properties
+            id: props.id,
+            label: props.name || props.id,
+            type: props.type || 'CONCEPT',
+            properties: {
+              ...props,
+              name: props.name || props.id,
+              description: props.description || ''
+            }
           });
-          seenNodes.add(entity.properties.id);
+          seenNodes.add(props.id);
         }
         
         connections.forEach((conn: any) => {
           if (conn.node && conn.rel) {
-            const connectedId = conn.node.properties.id;
+            const connProps = conn.node.properties;
+            const connectedId = connProps.id;
             
             if (!seenNodes.has(connectedId)) {
               nodes.push({
                 id: connectedId,
-                label: conn.node.properties.name || connectedId,
-                type: conn.node.properties.type || 'Unknown',
-                properties: conn.node.properties
+                label: connProps.name || connectedId,
+                type: connProps.type || 'CONCEPT',
+                properties: {
+                  ...connProps,
+                  name: connProps.name || connectedId,
+                  description: connProps.description || ''
+                }
               });
               seenNodes.add(connectedId);
             }
             
-            const edgeKey = `${entity.properties.id}-${conn.relType}-${connectedId}`;
+            const edgeKey = `${props.id}-${conn.relType}-${connectedId}`;
             if (!seenEdges.has(edgeKey)) {
               edges.push({
                 id: edgeKey,
-                source: entity.properties.id,
+                source: props.id,
                 target: connectedId,
                 type: conn.relType,
                 properties: conn.rel.properties || {}
@@ -432,6 +480,8 @@ export class GraphProcessor {
           }
         });
       });
+      
+      console.log(`[Graph Processor] Query KG built: ${nodes.length} nodes, ${edges.length} edges`);
       
       return {
         nodes,
@@ -482,14 +532,17 @@ export class GraphProcessor {
       const statsResult = await session.run(
         `
         MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
-        WHERE NOT e.isDuplicate = true
+        WHERE e.isDuplicate IS NULL OR e.isDuplicate <> true
         WITH count(e) as entityCount, collect(e.type) as types
         MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e1:Entity)-[r]->(e2:Entity)
-        WHERE NOT e1.isDuplicate = true AND NOT e2.isDuplicate = true
+        WHERE (e1.isDuplicate IS NULL OR e1.isDuplicate <> true)
+          AND (e2.isDuplicate IS NULL OR e2.isDuplicate <> true)
         RETURN entityCount, types, count(r) as relCount, collect(type(r)) as relTypes
         `,
         { userId }
       );
+      
+      console.log(`[Graph Processor] Statistics query completed`);
       
       const record = statsResult.records[0];
       const entityCount = record?.get('entityCount')?.toNumber() || 0;
