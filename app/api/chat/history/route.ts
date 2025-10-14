@@ -12,12 +12,10 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
 
     if (mode === 'sessions') {
-      // Get list of chat sessions
       const sessions = await getChatSessions(user.id);
       return NextResponse.json({ sessions });
     }
 
-    // Get chat history
     const messages = await getChatHistory(user.id, sessionId || undefined, limit);
     
     return NextResponse.json({

@@ -8,17 +8,29 @@ import {
   TrashIcon
 } from '@heroicons/react/24/outline';
 
+interface ChatMessage {
+  id: string;
+  userId: string;
+  sessionId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  metadata: any;
+  timestamp: string;
+  createdAt: string;
+}
+
 interface ChatSession {
   sessionId: string;
   lastMessage: string;
   timestamp: string;
   messageCount: number;
+  messages?: ChatMessage[];
 }
 
 interface ChatHistoryProps {
   isOpen: boolean;
   onClose: () => void;
-  onLoadSession: (sessionId: string) => void;
+  onLoadSession: (sessionId: string, messages: ChatMessage[]) => void;
 }
 
 export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHistoryProps) {
@@ -50,6 +62,20 @@ export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHist
     }
   };
 
+  const loadSessionMessages = async (sessionId: string) => {
+    try {
+      const response = await fetch(`/api/chat/history?sessionId=${sessionId}`);
+      if (!response.ok) throw new Error('Failed to fetch session messages');
+      
+      const data = await response.json();
+      return data.messages || [];
+    } catch (err) {
+      console.error('Error fetching session messages:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load messages');
+      return [];
+    }
+  };
+
   const formatDate = (timestamp: string) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -67,7 +93,6 @@ export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHist
 
   return (
     <div className="fixed inset-y-0 right-0 w-80 bg-white shadow-2xl z-50 flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         <div className="flex items-center space-x-2">
           <ClockIcon className="h-5 w-5 text-gray-600" />
@@ -80,8 +105,6 @@ export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHist
           <XMarkIcon className="h-5 w-5" />
         </button>
       </div>
-
-      {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32">
@@ -108,9 +131,12 @@ export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHist
             {sessions.map((session) => (
               <button
                 key={session.sessionId}
-                onClick={() => {
-                  onLoadSession(session.sessionId);
-                  onClose();
+                onClick={async () => {
+                  const messages = await loadSessionMessages(session.sessionId);
+                  if (messages.length > 0) {
+                    onLoadSession(session.sessionId, messages);
+                    onClose();
+                  }
                 }}
                 className="w-full p-4 text-left hover:bg-gray-50 transition-colors"
               >
@@ -131,8 +157,6 @@ export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHist
           </div>
         )}
       </div>
-
-      {/* Footer */}
       <div className="p-4 border-t border-gray-200 bg-gray-50">
         <button
           onClick={fetchSessions}

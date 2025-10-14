@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PaperAirplaneIcon, DocumentTextIcon, BeakerIcon, UserIcon } from '@heroicons/react/24/outline';
 import { LightBulbIcon, CogIcon, EyeIcon, CheckCircleIcon } from '@heroicons/react/24/solid';
+import ResponseGraph from './ResponseGraph';
 
 interface Message {
   id: string;
@@ -39,9 +40,11 @@ interface ReasoningStep {
 interface ChatInterfaceProps {
   onShowGraph?: (query: string, mode?: 'central' | 'document' | 'query', graphData?: { nodes: any[]; edges: any[] }) => void;
   selectedDocuments?: string[];
+  loadedMessages?: any[] | null;
+  onMessagesLoaded?: () => void;
 }
 
-export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: ChatInterfaceProps) {
+export default function ChatInterface({ onShowGraph, selectedDocuments = [], loadedMessages, onMessagesLoaded }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -54,6 +57,10 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  const [showResponseGraph, setShowResponseGraph] = useState(false);
+  const [responseGraphData, setResponseGraphData] = useState<{ nodes: any[]; edges: any[] } | null>(null);
+  const [responseGraphQuery, setResponseGraphQuery] = useState('');
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -61,6 +68,28 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
   useEffect(() => {
     scrollToBottom();
   }, [messages, streamingMessage]);
+
+  useEffect(() => {
+    if (loadedMessages && loadedMessages.length > 0) {
+      const convertedMessages: Message[] = loadedMessages.map((msg: any) => {
+        const knowledgeGraph = msg.metadata?.knowledgeGraph || null;
+        return {
+          id: msg.id || msg.$id || Date.now().toString(),
+          role: msg.role,
+          content: msg.content,
+          sources: msg.metadata?.sources || [],
+          timestamp: new Date(msg.timestamp || msg.createdAt).getTime(),
+          reasoningChain: msg.metadata?.reasoningChain || [],
+          knowledgeGraph: knowledgeGraph,
+          user: msg.user
+        };
+      });
+      setMessages(convertedMessages);
+      if (onMessagesLoaded) {
+        onMessagesLoaded();
+      }
+    }
+  }, [loadedMessages, onMessagesLoaded]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,7 +110,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
     setCurrentKnowledgeGraph(null);
     setThinkingStatus('Initializing...');
 
-    // Cancel any ongoing request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -97,7 +125,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
         body: JSON.stringify({
           query: userMessage.content,
           documentIds: selectedDocuments.length > 0 ? selectedDocuments : undefined,
-          conversationHistory: messages.slice(-10), // Keep last 10 messages for context
+          conversationHistory: messages.slice(-10),
           useAdvancedReasoning
         }),
         signal: abortControllerRef.current.signal
@@ -116,6 +144,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
       let sources: Source[] = [];
       const reasoningSteps: ReasoningStep[] = [];
       let knowledgeGraph: any = null;
+      let partialData = '';
 
       try {
         while (true) {
@@ -127,53 +156,37 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
-              const data = line.slice(6);
+              let data = line.slice(6).trim();
               if (data === '[DONE]') {
-                // Stream finished
                 break;
               }
-
+              if (!data) continue;
               try {
                 const parsed = JSON.parse(data);
-                
                 if (parsed.type === 'thinking') {
-                  // Update thinking status
                   setThinkingStatus(parsed.message || 'Thinking...');
                 } else if (parsed.type === 'chunk' && parsed.content) {
                   assistantMessage += parsed.content;
                   setStreamingMessage(assistantMessage);
-                  setThinkingStatus(''); // Clear thinking status when content starts
+                  setThinkingStatus('');
                 } else if (parsed.type === 'sources') {
                   sources = parsed.sources || [];
-                  console.log('[Cache Info] Received sources:', sources.length);
                 } else if (parsed.type === 'reasoning') {
-                  // Reasoning step
                   reasoningSteps.push(parsed.step);
                   setCurrentReasoningSteps([...reasoningSteps]);
                   setThinkingStatus(`Processing step ${reasoningSteps.length}...`);
                 } else if (parsed.type === 'tool') {
-                  // Tool execution update
-                  console.log('[Tool Execution]:', parsed.tool);
                   setThinkingStatus(`Executing ${parsed.tool.tool}...`);
                 } else if (parsed.type === 'refinement') {
-                  // Refinement iteration
-                  console.log('[Refinement]:', parsed.data);
                   setThinkingStatus('Refining answer...');
                 } else if (parsed.type === 'knowledge_graph') {
-                  // Knowledge graph for this response
                   knowledgeGraph = parsed.graph;
                   setCurrentKnowledgeGraph(knowledgeGraph);
-                  console.log('[Knowledge Graph] Received graph:', {
-                    nodes: parsed.graph?.nodes?.length || 0,
-                    edges: parsed.graph?.edges?.length || 0,
-                    sampleNodes: parsed.graph?.nodes?.slice(0, 3)
-                  });
-                } else if (parsed.type === 'metadata') {
-                  // Metadata
-                  console.log('[Session Metadata]:', parsed);
                 }
               } catch (parseError) {
-                console.error('Error parsing stream data:', parseError);
+                if (data.includes('"type":"knowledge_graph"') || data.includes('type": "knowledge_graph"')) {
+                  continue;
+                }
               }
             }
           }
@@ -182,7 +195,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
         reader.releaseLock();
       }
 
-      // Add final message to chat
       const finalMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -199,7 +211,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
       setThinkingStatus('');
 
     } catch (error) {
-      console.error('Chat error:', error);
       if ((error as Error).name !== 'AbortError') {
         const errorMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -308,7 +319,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
 
   return (
     <div className="flex flex-col h-full bg-white">
-      {/* Header */}
       <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <div>
@@ -342,7 +352,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
         </div>
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-center py-12">
@@ -382,27 +391,49 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
               
               {message.role === 'assistant' && !showReasoning && renderSources(message.sources || [])}
               
-              {message.role === 'assistant' && (message.sources && message.sources.length > 0 || message.knowledgeGraph) && (
-                <div className="mt-2 flex space-x-2">
-                  {message.sources && message.sources.length > 0 && (
+              {message.role === 'assistant' && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {message.knowledgeGraph && (
+                    (() => {
+                      const hasFullGraph = message.knowledgeGraph.nodes && 
+                                          Array.isArray(message.knowledgeGraph.nodes) && 
+                                          message.knowledgeGraph.nodes.length > 0;
+                      if (hasFullGraph) {
+                        return (
+                          <button
+                            onClick={() => {
+                              const userMessageIndex = messages.findIndex(m => m.id === message.id) - 1;
+                              const userQuery = userMessageIndex >= 0 ? messages[userMessageIndex]?.content : '';
+                              setResponseGraphData(message.knowledgeGraph);
+                              setResponseGraphQuery(userQuery || 'Query Response');
+                              setShowResponseGraph(true);
+                            }}
+                            className="text-xs px-2 py-1 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-md font-medium transition-colors"
+                          >
+                            Response Graph ({message.knowledgeGraph.nodes.length} nodes, {message.knowledgeGraph.edges?.length || 0} edges)
+                          </button>
+                        );
+                      } else {
+                        if (message.sources && message.sources.length > 0) {
+                          return (
+                            <button
+                              onClick={() => onShowGraph?.('', 'central')}
+                              className="text-xs px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md font-medium transition-colors"
+                            >
+                              Central Knowledge Graph
+                            </button>
+                          );
+                        }
+                      }
+                      return null;
+                    })()
+                  )}
+                  {!message.knowledgeGraph && message.sources && message.sources.length > 0 && (
                     <button
                       onClick={() => onShowGraph?.('', 'central')}
-                      className="text-xs px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md font-medium"
+                      className="text-xs px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md font-medium transition-colors"
                     >
-                      📊 Central Knowledge Graph
-                    </button>
-                  )}
-                  {message.knowledgeGraph && (
-                    <button
-                      onClick={() => {
-                        // Get the user's original query from the messages
-                        const userMessageIndex = messages.findIndex(m => m.id === message.id) - 1;
-                        const userQuery = userMessageIndex >= 0 ? messages[userMessageIndex]?.content : '';
-                        onShowGraph?.(userQuery || message.content, 'query', message.knowledgeGraph);
-                      }}
-                      className="text-xs px-2 py-1 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-md font-medium"
-                    >
-                      🔍 Query Graph ({message.knowledgeGraph.nodes?.length || 0} nodes)
+                      Central Knowledge Graph
                     </button>
                   )}
                 </div>
@@ -411,7 +442,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
           </div>
         ))}
 
-        {/* Streaming message */}
         {(streamingMessage || thinkingStatus) && (
           <div className="flex justify-start">
             <div className="max-w-2xl px-4 py-2 rounded-lg bg-gray-100 text-gray-900">
@@ -419,7 +449,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
                 <div className="whitespace-pre-wrap">{streamingMessage}</div>
               )}
               
-              {/* Show reasoning in real-time */}
               {showReasoning && currentReasoningSteps.length > 0 && renderReasoningChain(currentReasoningSteps)}
               
               <div className="mt-2 flex items-center space-x-2">
@@ -445,7 +474,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200">
         <form onSubmit={handleSubmit} className="flex space-x-3">
           <input
@@ -476,6 +504,15 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
           )}
         </form>
       </div>
+
+      {showResponseGraph && responseGraphData && (
+        <ResponseGraph
+          isOpen={showResponseGraph}
+          onClose={() => setShowResponseGraph(false)}
+          graphData={responseGraphData}
+          query={responseGraphQuery}
+        />
+      )}
     </div>
   );
 }

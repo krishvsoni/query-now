@@ -25,6 +25,7 @@ export default function ChatPage() {
   const [graphData, setGraphData] = useState<{ nodes: any[]; edges: any[] } | undefined>(undefined);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string; fullName: string } | null>(null);
+  const [loadedMessages, setLoadedMessages] = useState<any[] | null>(null);
 
   const handleUploadComplete = (document: any, user: any) => {
     setCurrentUser(user);
@@ -49,13 +50,13 @@ export default function ChatPage() {
   const handleShowCentralGraph = () => {
     setGraphQuery('');
     setGraphMode('central');
-    setGraphData(undefined); // Clear preloaded data for central graph
+    setGraphData(undefined); 
     setShowGraph(true);
   };
   
-  const handleLoadSession = (sessionId: string) => {
+  const handleLoadSession = (sessionId: string, messages: any[]) => {
     setCurrentSessionId(sessionId);
-    // Trigger chat interface to load this session
+    setLoadedMessages(messages);
   };
 
   const tabs = [
@@ -65,18 +66,17 @@ export default function ChatPage() {
       icon: ChatBubbleLeftRightIcon,
       component: (
         <div className="flex h-full">
-          {/* Main Chat Area */}
           <div className="flex-1">
             <ChatInterface 
               onShowGraph={handleShowGraph} 
               selectedDocuments={selectedDocuments}
+              loadedMessages={loadedMessages}
+              onMessagesLoaded={() => setLoadedMessages(null)}
             />
           </div>
           
-          {/* Sidebar */}
           <div className="w-80 border-l border-gray-200 bg-gray-50 p-4 overflow-y-auto">
             <div className="space-y-6">
-              {/* Document Upload */}
               <div>
                 <h3 className="text-sm font-medium text-gray-900 mb-3">Upload Document</h3>
                 <DocumentUpload 
@@ -85,14 +85,12 @@ export default function ChatPage() {
                 />
               </div>
 
-              {/* Document List */}
               <DocumentList 
                 onDocumentSelect={handleDocumentSelect}
                 selectedDocuments={selectedDocuments}
                 refreshTrigger={refreshDocuments}
               />
 
-              {/* Quick Actions */}
               <div className="bg-white rounded-lg p-4 border">
                 <h3 className="text-sm font-medium text-gray-900 mb-3">Quick Actions</h3>
                 <div className="space-y-2">
@@ -114,7 +112,6 @@ export default function ChatPage() {
                 </div>
               </div>
 
-              {/* Stats */}
               <div className="bg-white rounded-lg p-4 border">
                 <h3 className="text-sm font-medium text-gray-900 mb-3">Session Stats</h3>
                 <div className="space-y-2 text-sm text-gray-600">
@@ -161,7 +158,6 @@ export default function ChatPage() {
               </div>
             </div>
 
-            {/* Document List */}
             <DocumentList 
               onDocumentSelect={handleDocumentSelect}
               selectedDocuments={selectedDocuments}
@@ -169,7 +165,6 @@ export default function ChatPage() {
             />
           </div>
 
-          {/* Processing Information */}
           <div className="mt-8 bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-medium text-gray-900 mb-4">How Document Processing Works</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -244,9 +239,7 @@ export default function ChatPage() {
     <div className="h-screen bg-gray-100 relative">
       <Tabs tabs={tabs} defaultTab="chat" />
       
-      {/* Floating Buttons */}
       <div className="fixed bottom-6 right-6 flex flex-col space-y-3 z-40">
-        {/* History Button */}
         <button
           onClick={() => setShowHistory(true)}
           className="bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-full shadow-lg transition-all hover:scale-110 group"
@@ -258,7 +251,6 @@ export default function ChatPage() {
           </span>
         </button>
         
-        {/* Central Graph Button */}
         <button
           onClick={handleShowCentralGraph}
           className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-all hover:scale-110 group"
