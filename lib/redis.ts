@@ -64,12 +64,18 @@ export class DocumentPipeline {
 
   async cacheEmbedding(key: string, embedding: number[], ttl: number = 3600) {
     if (!this.redis) await this.init();
+    console.log(`[Redis Cache] Storing embedding with key: ${key.substring(0, 50)}... (TTL: ${ttl}s)`);
     await this.redis.setEx(key, ttl, JSON.stringify(embedding));
   }
 
   async getCachedEmbedding(key: string): Promise<number[] | null> {
     if (!this.redis) await this.init();
     const cached = await this.redis.get(key);
+    if (cached) {
+      console.log(`[Redis Cache] ✓ Cache HIT for embedding: ${key.substring(0, 50)}...`);
+    } else {
+      console.log(`[Redis Cache] ✗ Cache MISS for embedding: ${key.substring(0, 50)}...`);
+    }
     return cached ? JSON.parse(cached) : null;
   }
 
@@ -80,6 +86,7 @@ export class DocumentPipeline {
     if (count === 1) {
       await this.redis.expire(key, 86400);
     }
+    console.log(`[Redis Usage] User ${userId} query count: ${count}/100`);
     return count;
   }
 
@@ -103,18 +110,27 @@ export class DocumentPipeline {
 
   async cacheSearchResults(key: string, results: any[], ttl: number = 1800) {
     if (!this.redis) await this.init();
+    console.log(`[Redis Cache] Storing search results: ${key.substring(0, 50)}... (${results.length} results, TTL: ${ttl}s)`);
     await this.redis.setEx(`search:${key}`, ttl, JSON.stringify(results));
   }
 
   async getCachedSearchResults(key: string): Promise<any[] | null> {
     if (!this.redis) await this.init();
     const cached = await this.redis.get(`search:${key}`);
-    return cached ? JSON.parse(cached) : null;
+    if (cached) {
+      const results = JSON.parse(cached);
+      console.log(`[Redis Cache] ✓ Cache HIT for search: ${key.substring(0, 50)}... (${results.length} results)`);
+      return results;
+    } else {
+      console.log(`[Redis Cache] ✗ Cache MISS for search: ${key.substring(0, 50)}...`);
+      return null;
+    }
   }
 
   async cacheGraphData(userId: string, query: string, data: any, ttl: number = 3600) {
     if (!this.redis) await this.init();
     const key = `graph:${userId}:${Buffer.from(query).toString('base64')}`;
+    console.log(`[Redis Cache] Storing graph data for user ${userId}: "${query.substring(0, 40)}..." (TTL: ${ttl}s)`);
     await this.redis.setEx(key, ttl, JSON.stringify(data));
   }
 
@@ -122,6 +138,11 @@ export class DocumentPipeline {
     if (!this.redis) await this.init();
     const key = `graph:${userId}:${Buffer.from(query).toString('base64')}`;
     const cached = await this.redis.get(key);
+    if (cached) {
+      console.log(`[Redis Cache] ✓ Cache HIT for graph data: "${query.substring(0, 40)}..."`);
+    } else {
+      console.log(`[Redis Cache] ✗ Cache MISS for graph data: "${query.substring(0, 40)}..."`);
+    }
     return cached ? JSON.parse(cached) : null;
   }
 

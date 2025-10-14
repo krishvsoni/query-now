@@ -1,0 +1,522 @@
+import { getSession } from './neo4j';
+import { generateEmbedding } from './openai';
+import { pipeline } from './redis';
+
+/**
+ * Advanced Graph Processor with Entity Resolution and Deduplication
+ * Central Knowledge Graph Management
+ */
+
+export interface Entity {
+  id: string;
+  name: string;
+  type: string;
+  description?: string;
+  properties?: Record<string, any>;
+  embedding?: number[];
+  confidence?: number;
+  aliases?: string[];
+  canonicalId?: string;
+}
+
+export interface Relationship {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  properties?: Record<string, any>;
+  confidence?: number;
+  weight?: number;
+}
+
+export interface KnowledgeGraph {
+  nodes: Array<{
+    id: string;
+    label: string;
+    type: string;
+    properties: Record<string, any>;
+  }>;
+  edges: Array<{
+    id: string;
+    source: string;
+    target: string;
+    type: string;
+    properties: Record<string, any>;
+  }>;
+  metadata: {
+    entityCount: number;
+    relationshipCount: number;
+    createdAt: string;
+    scope: 'user' | 'document' | 'query';
+  };
+}
+
+export class GraphProcessor {
+  private similarityThreshold = 0.85;
+  
+  /**
+   * Entity Resolution: Identifies and merges duplicate entities
+   */
+  async resolveEntities(userId: string, entities: Entity[]): Promise<Entity[]> {
+    console.log(`Resolving ${entities.length} entities for user ${userId}`);
+    
+    const cacheKey = `entity-resolution:${userId}`;
+    const cached = await pipeline.getCachedGraphData(userId, cacheKey);
+    
+    if (cached) {
+      return cached;
+    }
+    
+    const session = await getSession();
+    const resolvedEntities: Entity[] = [];
+    
+    try {
+      for (const entity of entities) {
+        // Generate embedding for entity if not present
+        if (!entity.embedding) {
+          const embeddingText = `${entity.name} ${entity.type} ${entity.description || ''}`;
+          entity.embedding = await generateEmbedding(embeddingText);
+        }
+        
+        // Find similar entities in the knowledge graph
+        const similarEntities = await this.findSimilarEntities(
+          session,
+          userId,
+          entity.name,
+          entity.type,
+          entity.embedding
+        );
+        
+        if (similarEntities.length > 0) {
+          // Merge with most similar entity
+          const merged = await this.mergeEntities(session, entity, similarEntities[0]);
+          resolvedEntities.push(merged);
+        } else {
+          // Create new canonical entity
+          resolvedEntities.push(entity);
+        }
+      }
+      
+      await pipeline.cacheGraphData(userId, cacheKey, resolvedEntities, 3600);
+      return resolvedEntities;
+    } finally {
+      await session.close();
+    }
+  }
+  
+  /**
+   * Find similar entities using name matching and embedding similarity
+   */
+  private async findSimilarEntities(
+    session: any,
+    userId: string,
+    name: string,
+    type: string,
+    embedding: number[]
+  ): Promise<any[]> {
+    // First check by name and type
+    const nameResult = await session.run(
+      `
+      MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
+      WHERE e.type = $type AND (
+        toLower(e.name) = toLower($name) OR
+        $name IN e.aliases OR
+        e.name =~ '(?i).*' + $name + '.*'
+      )
+      RETURN e, e.embedding as embedding
+      LIMIT 5
+      `,
+      { userId, name, type }
+    );
+    
+    const candidates = nameResult.records.map(r => ({
+      entity: r.get('e').properties,
+      embedding: r.get('embedding')
+    }));
+    
+    // Calculate embedding similarity
+    const similar = candidates.filter(candidate => {
+      if (!candidate.embedding) return false;
+      const similarity = this.cosineSimilarity(embedding, candidate.embedding);
+      return similarity >= this.similarityThreshold;
+    });
+    
+    return similar.map(s => s.entity);
+  }
+  
+  /**
+   * Merge duplicate entities into canonical entity
+   */
+  private async mergeEntities(session: any, newEntity: Entity, existingEntity: any): Promise<Entity> {
+    const canonicalId = existingEntity.id || existingEntity.canonicalId || newEntity.id;
+    
+    // Update existing entity with new information
+    const mergedProperties = {
+      ...existingEntity.properties,
+      ...newEntity.properties,
+      aliases: [...(existingEntity.aliases || []), newEntity.name].filter((v, i, a) => a.indexOf(v) === i),
+      lastUpdated: new Date().toISOString()
+    };
+    
+    await session.run(
+      `
+      MATCH (e:Entity {id: $existingId})
+      SET e += $properties
+      RETURN e
+      `,
+      { existingId: existingEntity.id, properties: mergedProperties }
+    );
+    
+    // Mark new entity as duplicate
+    if (newEntity.id !== existingEntity.id) {
+      await session.run(
+        `
+        MERGE (e:Entity {id: $newId})
+        SET e.canonicalId = $canonicalId, e.isDuplicate = true
+        `,
+        { newId: newEntity.id, canonicalId }
+      );
+    }
+    
+    return {
+      ...newEntity,
+      id: canonicalId,
+      canonicalId,
+      properties: mergedProperties
+    };
+  }
+  
+  /**
+   * Deduplicate relationships
+   */
+  async deduplicateRelationships(userId: string): Promise<number> {
+    const session = await getSession();
+    
+    try {
+      const result = await session.run(
+        `
+        MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e1:Entity)
+        MATCH (e1)-[r]->(e2:Entity)
+        WITH e1, e2, type(r) as relType, collect(r) as rels
+        WHERE size(rels) > 1
+        WITH e1, e2, relType, rels, head(rels) as keepRel
+        FOREACH (r in tail(rels) | DELETE r)
+        RETURN count(*) as dedupCount
+        `,
+        { userId }
+      );
+      
+      const count = result.records[0]?.get('dedupCount')?.toNumber() || 0;
+      console.log(`Deduplicated ${count} relationships`);
+      return count;
+    } finally {
+      await session.close();
+    }
+  }
+  
+  /**
+   * Build centralized knowledge graph for user (all documents)
+   */
+  async buildCentralKnowledgeGraph(userId: string): Promise<KnowledgeGraph> {
+    console.log(`Building central knowledge graph for user ${userId}`);
+    
+    const cacheKey = `central-kg:${userId}`;
+    const cached = await pipeline.getCachedGraphData(userId, cacheKey);
+    
+    if (cached) {
+      return cached;
+    }
+    
+    const session = await getSession();
+    
+    try {
+      // Get all entities
+      const entityResult = await session.run(
+        `
+        MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
+        WHERE NOT e.isDuplicate = true
+        RETURN e
+        LIMIT 500
+        `,
+        { userId }
+      );
+      
+      // Get all relationships
+      const relResult = await session.run(
+        `
+        MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e1:Entity)
+        MATCH (e1)-[r]->(e2:Entity)
+        WHERE NOT e1.isDuplicate = true AND NOT e2.isDuplicate = true
+        RETURN e1, r, e2, type(r) as relType
+        LIMIT 1000
+        `,
+        { userId }
+      );
+      
+      const nodes = entityResult.records.map(record => {
+        const entity = record.get('e');
+        return {
+          id: entity.properties.id,
+          label: entity.properties.name || entity.properties.id,
+          type: entity.properties.type || 'Unknown',
+          properties: entity.properties
+        };
+      });
+      
+      const edges = relResult.records.map((record, idx) => {
+        const source = record.get('e1');
+        const target = record.get('e2');
+        const rel = record.get('r');
+        const relType = record.get('relType');
+        
+        return {
+          id: `rel-${idx}`,
+          source: source.properties.id,
+          target: target.properties.id,
+          type: relType,
+          properties: rel.properties || {}
+        };
+      });
+      
+      const knowledgeGraph: KnowledgeGraph = {
+        nodes,
+        edges,
+        metadata: {
+          entityCount: nodes.length,
+          relationshipCount: edges.length,
+          createdAt: new Date().toISOString(),
+          scope: 'user'
+        }
+      };
+      
+      await pipeline.cacheGraphData(userId, cacheKey, knowledgeGraph, 1800);
+      return knowledgeGraph;
+    } finally {
+      await session.close();
+    }
+  }
+  
+  /**
+   * Build document-specific knowledge graph
+   */
+  async buildDocumentKnowledgeGraph(userId: string, documentId: string): Promise<KnowledgeGraph> {
+    const session = await getSession();
+    
+    try {
+      const entityResult = await session.run(
+        `
+        MATCH (u:User {id: $userId})-[:OWNS]->(d:Document {id: $documentId})-[:CONTAINS]->(e:Entity)
+        WHERE NOT e.isDuplicate = true
+        RETURN e
+        `,
+        { userId, documentId }
+      );
+      
+      const relResult = await session.run(
+        `
+        MATCH (u:User {id: $userId})-[:OWNS]->(d:Document {id: $documentId})-[:CONTAINS]->(e1:Entity)
+        MATCH (e1)-[r]->(e2:Entity)
+        WHERE NOT e1.isDuplicate = true AND NOT e2.isDuplicate = true
+        RETURN e1, r, e2, type(r) as relType
+        `,
+        { userId, documentId }
+      );
+      
+      const nodes = entityResult.records.map(record => {
+        const entity = record.get('e');
+        return {
+          id: entity.properties.id,
+          label: entity.properties.name || entity.properties.id,
+          type: entity.properties.type || 'Unknown',
+          properties: entity.properties
+        };
+      });
+      
+      const edges = relResult.records.map((record, idx) => {
+        const source = record.get('e1');
+        const target = record.get('e2');
+        const rel = record.get('r');
+        const relType = record.get('relType');
+        
+        return {
+          id: `rel-${idx}`,
+          source: source.properties.id,
+          target: target.properties.id,
+          type: relType,
+          properties: rel.properties || {}
+        };
+      });
+      
+      return {
+        nodes,
+        edges,
+        metadata: {
+          entityCount: nodes.length,
+          relationshipCount: edges.length,
+          createdAt: new Date().toISOString(),
+          scope: 'document'
+        }
+      };
+    } finally {
+      await session.close();
+    }
+  }
+  
+  /**
+   * Build query-specific knowledge graph (subgraph relevant to query)
+   */
+  async buildQueryKnowledgeGraph(
+    userId: string,
+    query: string,
+    relevantEntityIds: string[]
+  ): Promise<KnowledgeGraph> {
+    const session = await getSession();
+    
+    try {
+      // Get entities and their neighbors
+      const result = await session.run(
+        `
+        MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
+        WHERE e.id IN $entityIds AND NOT e.isDuplicate = true
+        OPTIONAL MATCH (e)-[r]-(connected:Entity)
+        WHERE NOT connected.isDuplicate = true
+        RETURN e, collect(distinct {rel: r, node: connected, relType: type(r)}) as connections
+        `,
+        { userId, entityIds: relevantEntityIds }
+      );
+      
+      const nodes: any[] = [];
+      const edges: any[] = [];
+      const seenNodes = new Set<string>();
+      const seenEdges = new Set<string>();
+      
+      result.records.forEach(record => {
+        const entity = record.get('e');
+        const connections = record.get('connections');
+        
+        if (!seenNodes.has(entity.properties.id)) {
+          nodes.push({
+            id: entity.properties.id,
+            label: entity.properties.name || entity.properties.id,
+            type: entity.properties.type || 'Unknown',
+            properties: entity.properties
+          });
+          seenNodes.add(entity.properties.id);
+        }
+        
+        connections.forEach((conn: any) => {
+          if (conn.node && conn.rel) {
+            const connectedId = conn.node.properties.id;
+            
+            if (!seenNodes.has(connectedId)) {
+              nodes.push({
+                id: connectedId,
+                label: conn.node.properties.name || connectedId,
+                type: conn.node.properties.type || 'Unknown',
+                properties: conn.node.properties
+              });
+              seenNodes.add(connectedId);
+            }
+            
+            const edgeKey = `${entity.properties.id}-${conn.relType}-${connectedId}`;
+            if (!seenEdges.has(edgeKey)) {
+              edges.push({
+                id: edgeKey,
+                source: entity.properties.id,
+                target: connectedId,
+                type: conn.relType,
+                properties: conn.rel.properties || {}
+              });
+              seenEdges.add(edgeKey);
+            }
+          }
+        });
+      });
+      
+      return {
+        nodes,
+        edges,
+        metadata: {
+          entityCount: nodes.length,
+          relationshipCount: edges.length,
+          createdAt: new Date().toISOString(),
+          scope: 'query'
+        }
+      };
+    } finally {
+      await session.close();
+    }
+  }
+  
+  /**
+   * Cosine similarity between two vectors
+   */
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length !== b.length) return 0;
+    
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+    
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  }
+  
+  /**
+   * Calculate graph statistics
+   */
+  async getGraphStatistics(userId: string): Promise<{
+    totalEntities: number;
+    totalRelationships: number;
+    entityTypes: Record<string, number>;
+    relationshipTypes: Record<string, number>;
+  }> {
+    const session = await getSession();
+    
+    try {
+      const statsResult = await session.run(
+        `
+        MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
+        WHERE NOT e.isDuplicate = true
+        WITH count(e) as entityCount, collect(e.type) as types
+        MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e1:Entity)-[r]->(e2:Entity)
+        WHERE NOT e1.isDuplicate = true AND NOT e2.isDuplicate = true
+        RETURN entityCount, types, count(r) as relCount, collect(type(r)) as relTypes
+        `,
+        { userId }
+      );
+      
+      const record = statsResult.records[0];
+      const entityCount = record?.get('entityCount')?.toNumber() || 0;
+      const relCount = record?.get('relCount')?.toNumber() || 0;
+      const types = record?.get('types') || [];
+      const relTypes = record?.get('relTypes') || [];
+      
+      const entityTypes: Record<string, number> = {};
+      types.forEach((type: string) => {
+        entityTypes[type] = (entityTypes[type] || 0) + 1;
+      });
+      
+      const relationshipTypes: Record<string, number> = {};
+      relTypes.forEach((type: string) => {
+        relationshipTypes[type] = (relationshipTypes[type] || 0) + 1;
+      });
+      
+      return {
+        totalEntities: entityCount,
+        totalRelationships: relCount,
+        entityTypes,
+        relationshipTypes
+      };
+    } finally {
+      await session.close();
+    }
+  }
+}
+
+export const graphProcessor = new GraphProcessor();

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { PaperAirplaneIcon, DocumentTextIcon, BeakerIcon, UserIcon } from '@heroicons/react/24/outline';
+import { LightBulbIcon, CogIcon, EyeIcon, CheckCircleIcon } from '@heroicons/react/24/solid';
 
 interface Message {
   id: string;
@@ -9,6 +10,8 @@ interface Message {
   content: string;
   sources?: Source[];
   timestamp: number;
+  reasoningChain?: ReasoningStep[];
+  knowledgeGraph?: any;
   user?: {
     id: string;
     email: string;
@@ -25,6 +28,14 @@ interface Source {
   entityType?: string;
 }
 
+interface ReasoningStep {
+  id: string;
+  type: 'thought' | 'action' | 'observation' | 'conclusion';
+  content: string;
+  timestamp: number;
+  confidence?: number;
+}
+
 interface ChatInterfaceProps {
   onShowGraph?: (query: string) => void;
   selectedDocuments?: string[];
@@ -35,6 +46,11 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
+  const [currentReasoningSteps, setCurrentReasoningSteps] = useState<ReasoningStep[]>([]);
+  const [currentKnowledgeGraph, setCurrentKnowledgeGraph] = useState<any>(null);
+  const [showReasoning, setShowReasoning] = useState(true);
+  const [useAdvancedReasoning, setUseAdvancedReasoning] = useState(true);
+  const [thinkingStatus, setThinkingStatus] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -61,6 +77,9 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
     setInput('');
     setIsLoading(true);
     setStreamingMessage('');
+    setCurrentReasoningSteps([]);
+    setCurrentKnowledgeGraph(null);
+    setThinkingStatus('Initializing...');
 
     // Cancel any ongoing request
     if (abortControllerRef.current) {
@@ -78,7 +97,8 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
         body: JSON.stringify({
           query: userMessage.content,
           documentIds: selectedDocuments.length > 0 ? selectedDocuments : undefined,
-          conversationHistory: messages.slice(-10) // Keep last 10 messages for context
+          conversationHistory: messages.slice(-10), // Keep last 10 messages for context
+          useAdvancedReasoning
         }),
         signal: abortControllerRef.current.signal
       });
@@ -94,6 +114,8 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
 
       let assistantMessage = '';
       let sources: Source[] = [];
+      const reasoningSteps: ReasoningStep[] = [];
+      let knowledgeGraph: any = null;
 
       try {
         while (true) {
@@ -114,11 +136,37 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
               try {
                 const parsed = JSON.parse(data);
                 
-                if (parsed.type === 'chunk' && parsed.content) {
+                if (parsed.type === 'thinking') {
+                  // Update thinking status
+                  setThinkingStatus(parsed.message || 'Thinking...');
+                } else if (parsed.type === 'chunk' && parsed.content) {
                   assistantMessage += parsed.content;
                   setStreamingMessage(assistantMessage);
+                  setThinkingStatus(''); // Clear thinking status when content starts
                 } else if (parsed.type === 'sources') {
                   sources = parsed.sources || [];
+                  console.log('[Cache Info] Received sources:', sources.length);
+                } else if (parsed.type === 'reasoning') {
+                  // Reasoning step
+                  reasoningSteps.push(parsed.step);
+                  setCurrentReasoningSteps([...reasoningSteps]);
+                  setThinkingStatus(`Processing step ${reasoningSteps.length}...`);
+                } else if (parsed.type === 'tool') {
+                  // Tool execution update
+                  console.log('[Tool Execution]:', parsed.tool);
+                  setThinkingStatus(`Executing ${parsed.tool.tool}...`);
+                } else if (parsed.type === 'refinement') {
+                  // Refinement iteration
+                  console.log('[Refinement]:', parsed.data);
+                  setThinkingStatus('Refining answer...');
+                } else if (parsed.type === 'knowledge_graph') {
+                  // Knowledge graph for this response
+                  knowledgeGraph = parsed.graph;
+                  setCurrentKnowledgeGraph(knowledgeGraph);
+                  console.log('[Knowledge Graph] Received graph with', parsed.graph?.nodes?.length || 0, 'nodes');
+                } else if (parsed.type === 'metadata') {
+                  // Metadata
+                  console.log('[Session Metadata]:', parsed);
                 }
               } catch (parseError) {
                 console.error('Error parsing stream data:', parseError);
@@ -136,11 +184,15 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
         role: 'assistant',
         content: assistantMessage,
         sources,
+        reasoningChain: reasoningSteps,
+        knowledgeGraph,
         timestamp: Date.now()
       };
 
       setMessages(prev => [...prev, finalMessage]);
       setStreamingMessage('');
+      setCurrentReasoningSteps([]);
+      setThinkingStatus('');
 
     } catch (error) {
       console.error('Chat error:', error);
@@ -156,6 +208,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
     } finally {
       setIsLoading(false);
       setStreamingMessage('');
+      setThinkingStatus('');
     }
   };
 
@@ -164,7 +217,56 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
       abortControllerRef.current.abort();
       setIsLoading(false);
       setStreamingMessage('');
+      setThinkingStatus('');
     }
+  };
+
+  const renderReasoningChain = (steps: ReasoningStep[]) => {
+    if (!steps || steps.length === 0) return null;
+
+    const getStepIcon = (type: string) => {
+      switch (type) {
+        case 'thought':
+          return <LightBulbIcon className="h-4 w-4 text-yellow-500" />;
+        case 'action':
+          return <CogIcon className="h-4 w-4 text-blue-500" />;
+        case 'observation':
+          return <EyeIcon className="h-4 w-4 text-purple-500" />;
+        case 'conclusion':
+          return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
+        default:
+          return null;
+      }
+    };
+
+    return (
+      <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-sm font-medium text-gray-700">Reasoning Chain</h4>
+          <span className="text-xs text-gray-500">{steps.length} steps</span>
+        </div>
+        <div className="space-y-2 max-h-60 overflow-y-auto">
+          {steps.map((step, index) => (
+            <div key={step.id} className="flex items-start space-x-2 text-xs">
+              <div className="flex-shrink-0 mt-0.5">
+                {getStepIcon(step.type)}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center space-x-2">
+                  <span className="font-medium text-gray-700 capitalize">{step.type}</span>
+                  {step.confidence && (
+                    <span className="text-xs text-gray-500">
+                      ({Math.round(step.confidence * 100)}%)
+                    </span>
+                  )}
+                </div>
+                <p className="text-gray-600 mt-0.5">{step.content}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   const renderSources = (sources: Source[]) => {
@@ -204,12 +306,36 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
       <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200">
-        <h1 className="text-xl font-semibold text-gray-900">Query Documents</h1>
-        <p className="text-sm text-gray-600">
-          {selectedDocuments.length > 0 
-            ? `Searching ${selectedDocuments.length} selected document${selectedDocuments.length > 1 ? 's' : ''}`
-            : 'Select documents from the sidebar to search or search all documents'}
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Query Documents</h1>
+            <p className="text-sm text-gray-600">
+              {selectedDocuments.length > 0 
+                ? `Searching ${selectedDocuments.length} selected document${selectedDocuments.length > 1 ? 's' : ''}`
+                : 'Select documents from the sidebar to search or search all documents'}
+            </p>
+          </div>
+          <div className="flex items-center space-x-4">
+            <label className="flex items-center space-x-2 text-sm">
+              <input
+                type="checkbox"
+                checked={useAdvancedReasoning}
+                onChange={(e) => setUseAdvancedReasoning(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-gray-700">Advanced Reasoning</span>
+            </label>
+            <label className="flex items-center space-x-2 text-sm">
+              <input
+                type="checkbox"
+                checked={showReasoning}
+                onChange={(e) => setShowReasoning(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-gray-700">Show Reasoning</span>
+            </label>
+          </div>
+        </div>
       </div>
 
       {/* Messages */}
@@ -246,26 +372,66 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [] }: C
               }`}
             >
               <div className="whitespace-pre-wrap">{message.content}</div>
-              {message.role === 'assistant' && renderSources(message.sources || [])}
               
-              {message.role === 'assistant' && message.sources && message.sources.length > 0 && (
-                <button
-                  onClick={() => onShowGraph?.(message.content)}
-                  className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
-                >
-                  View Knowledge Graph
-                </button>
+              {message.role === 'assistant' && showReasoning && message.reasoningChain && 
+                renderReasoningChain(message.reasoningChain)}
+              
+              {message.role === 'assistant' && !showReasoning && renderSources(message.sources || [])}
+              
+              {message.role === 'assistant' && (message.sources && message.sources.length > 0 || message.knowledgeGraph) && (
+                <div className="mt-2 flex space-x-2">
+                  {message.sources && message.sources.length > 0 && (
+                    <button
+                      onClick={() => onShowGraph?.(message.content)}
+                      className="text-xs text-blue-600 hover:text-blue-800 underline"
+                    >
+                      View Central Knowledge Graph
+                    </button>
+                  )}
+                  {message.knowledgeGraph && (
+                    <button
+                      onClick={() => {
+                        // Could open a modal or expand inline
+                        console.log('Query-specific knowledge graph:', message.knowledgeGraph);
+                      }}
+                      className="text-xs text-purple-600 hover:text-purple-800 underline"
+                    >
+                      View Query Graph ({message.knowledgeGraph.nodes?.length || 0} nodes)
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
         ))}
 
         {/* Streaming message */}
-        {streamingMessage && (
+        {(streamingMessage || thinkingStatus) && (
           <div className="flex justify-start">
             <div className="max-w-2xl px-4 py-2 rounded-lg bg-gray-100 text-gray-900">
-              <div className="whitespace-pre-wrap">{streamingMessage}</div>
-              <div className="mt-2 text-xs text-gray-500">Typing...</div>
+              {streamingMessage && (
+                <div className="whitespace-pre-wrap">{streamingMessage}</div>
+              )}
+              
+              {/* Show reasoning in real-time */}
+              {showReasoning && currentReasoningSteps.length > 0 && renderReasoningChain(currentReasoningSteps)}
+              
+              <div className="mt-2 flex items-center space-x-2">
+                {thinkingStatus && (
+                  <div className="flex items-center space-x-2">
+                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                    <span className="animate-pulse text-xs text-blue-600 font-medium">{thinkingStatus}</span>
+                  </div>
+                )}
+                {!thinkingStatus && streamingMessage && (
+                  <div className="animate-pulse text-xs text-gray-500">Generating response...</div>
+                )}
+                {showReasoning && currentReasoningSteps.length > 0 && (
+                  <span className="text-xs text-blue-600">
+                    ({currentReasoningSteps.length} steps)
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         )}
