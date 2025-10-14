@@ -2,11 +2,6 @@ import { getSession } from './neo4j';
 import { generateEmbedding } from './openai';
 import { pipeline } from './redis';
 
-/**
- * Advanced Graph Processor with Entity Resolution and Deduplication
- * Central Knowledge Graph Management
- */
-
 export interface Entity {
   id: string;
   name: string;
@@ -53,32 +48,22 @@ export interface KnowledgeGraph {
 
 export class GraphProcessor {
   private similarityThreshold = 0.85;
-  
-  /**
-   * Entity Resolution: Identifies and merges duplicate entities
-   */
+
   async resolveEntities(userId: string, entities: Entity[]): Promise<Entity[]> {
     console.log(`Resolving ${entities.length} entities for user ${userId}`);
-    
     const cacheKey = `entity-resolution:${userId}`;
     const cached = await pipeline.getCachedGraphData(userId, cacheKey);
-    
     if (cached) {
       return cached;
     }
-    
     const session = await getSession();
     const resolvedEntities: Entity[] = [];
-    
     try {
       for (const entity of entities) {
-        // Generate embedding for entity if not present
         if (!entity.embedding) {
           const embeddingText = `${entity.name} ${entity.type} ${entity.description || ''}`;
           entity.embedding = await generateEmbedding(embeddingText);
         }
-        
-        // Find similar entities in the knowledge graph
         const similarEntities = await this.findSimilarEntities(
           session,
           userId,
@@ -86,27 +71,20 @@ export class GraphProcessor {
           entity.type,
           entity.embedding
         );
-        
         if (similarEntities.length > 0) {
-          // Merge with most similar entity
           const merged = await this.mergeEntities(session, entity, similarEntities[0]);
           resolvedEntities.push(merged);
         } else {
-          // Create new canonical entity
           resolvedEntities.push(entity);
         }
       }
-      
       await pipeline.cacheGraphData(userId, cacheKey, resolvedEntities, 3600);
       return resolvedEntities;
     } finally {
       await session.close();
     }
   }
-  
-  /**
-   * Find similar entities using name matching and embedding similarity
-   */
+
   private async findSimilarEntities(
     session: any,
     userId: string,
@@ -114,7 +92,6 @@ export class GraphProcessor {
     type: string,
     embedding: number[]
   ): Promise<any[]> {
-    // First check by name and type
     const nameResult = await session.run(
       `
       MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
@@ -128,36 +105,26 @@ export class GraphProcessor {
       `,
       { userId, name, type }
     );
-    
     const candidates = nameResult.records.map(r => ({
       entity: r.get('e').properties,
       embedding: r.get('embedding')
     }));
-    
-    // Calculate embedding similarity
     const similar = candidates.filter(candidate => {
       if (!candidate.embedding) return false;
       const similarity = this.cosineSimilarity(embedding, candidate.embedding);
       return similarity >= this.similarityThreshold;
     });
-    
     return similar.map(s => s.entity);
   }
-  
-  /**
-   * Merge duplicate entities into canonical entity
-   */
+
   private async mergeEntities(session: any, newEntity: Entity, existingEntity: any): Promise<Entity> {
     const canonicalId = existingEntity.id || existingEntity.canonicalId || newEntity.id;
-    
-    // Update existing entity with new information
     const mergedProperties = {
       ...existingEntity.properties,
       ...newEntity.properties,
       aliases: [...(existingEntity.aliases || []), newEntity.name].filter((v, i, a) => a.indexOf(v) === i),
       lastUpdated: new Date().toISOString()
     };
-    
     await session.run(
       `
       MATCH (e:Entity {id: $existingId})
@@ -166,8 +133,6 @@ export class GraphProcessor {
       `,
       { existingId: existingEntity.id, properties: mergedProperties }
     );
-    
-    // Mark new entity as duplicate
     if (newEntity.id !== existingEntity.id) {
       await session.run(
         `
@@ -177,7 +142,6 @@ export class GraphProcessor {
         { newId: newEntity.id, canonicalId }
       );
     }
-    
     return {
       ...newEntity,
       id: canonicalId,
@@ -185,13 +149,9 @@ export class GraphProcessor {
       properties: mergedProperties
     };
   }
-  
-  /**
-   * Deduplicate relationships
-   */
+
   async deduplicateRelationships(userId: string): Promise<number> {
     const session = await getSession();
-    
     try {
       const result = await session.run(
         `
@@ -205,7 +165,6 @@ export class GraphProcessor {
         `,
         { userId }
       );
-      
       const count = result.records[0]?.get('dedupCount')?.toNumber() || 0;
       console.log(`Deduplicated ${count} relationships`);
       return count;
@@ -213,24 +172,16 @@ export class GraphProcessor {
       await session.close();
     }
   }
-  
-  /**
-   * Build centralized knowledge graph for user (all documents)
-   */
+
   async buildCentralKnowledgeGraph(userId: string): Promise<KnowledgeGraph> {
     console.log(`Building central knowledge graph for user ${userId}`);
-    
     const cacheKey = `central-kg:${userId}`;
     const cached = await pipeline.getCachedGraphData(userId, cacheKey);
-    
     if (cached) {
       return cached;
     }
-    
     const session = await getSession();
-    
     try {
-      // Get all entities
       const entityResult = await session.run(
         `
         MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
@@ -240,10 +191,7 @@ export class GraphProcessor {
         `,
         { userId }
       );
-      
       console.log(`[Graph Processor] Found ${entityResult.records.length} entities for user ${userId}`);
-      
-      // Get all relationships
       const relResult = await session.run(
         `
         MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e1:Entity)
@@ -255,9 +203,7 @@ export class GraphProcessor {
         `,
         { userId }
       );
-      
       console.log(`[Graph Processor] Found ${relResult.records.length} relationships for user ${userId}`);
-      
       const nodes = entityResult.records.map(record => {
         const entityId = record.get('entityId');
         const name = record.get('name');
@@ -265,7 +211,6 @@ export class GraphProcessor {
         const description = record.get('description');
         const entity = record.get('e');
         const props = entity.properties;
-        
         return {
           id: entityId,
           label: name || entityId,
@@ -278,13 +223,11 @@ export class GraphProcessor {
           }
         };
       });
-      
       const edges = relResult.records.map((record, idx) => {
         const sourceId = record.get('sourceId');
         const targetId = record.get('targetId');
         const rel = record.get('r');
         const relType = record.get('relType');
-        
         return {
           id: `rel-${idx}`,
           source: sourceId,
@@ -293,9 +236,7 @@ export class GraphProcessor {
           properties: rel.properties || {}
         };
       });
-      
       console.log(`[Graph Processor] Central KG built: ${nodes.length} nodes, ${edges.length} edges`);
-      
       const knowledgeGraph: KnowledgeGraph = {
         nodes,
         edges,
@@ -306,20 +247,15 @@ export class GraphProcessor {
           scope: 'user'
         }
       };
-      
       await pipeline.cacheGraphData(userId, cacheKey, knowledgeGraph, 1800);
       return knowledgeGraph;
     } finally {
       await session.close();
     }
   }
-  
-  /**
-   * Build document-specific knowledge graph
-   */
+
   async buildDocumentKnowledgeGraph(userId: string, documentId: string): Promise<KnowledgeGraph> {
     const session = await getSession();
-    
     try {
       const entityResult = await session.run(
         `
@@ -329,9 +265,7 @@ export class GraphProcessor {
         `,
         { userId, documentId }
       );
-      
       console.log(`[Graph Processor] Found ${entityResult.records.length} entities for document ${documentId}`);
-      
       const relResult = await session.run(
         `
         MATCH (u:User {id: $userId})-[:OWNS]->(d:Document {id: $documentId})-[:CONTAINS]->(e1:Entity)
@@ -342,9 +276,7 @@ export class GraphProcessor {
         `,
         { userId, documentId }
       );
-      
       console.log(`[Graph Processor] Found ${relResult.records.length} relationships for document ${documentId}`);
-      
       const nodes = entityResult.records.map(record => {
         const entityId = record.get('entityId');
         const name = record.get('name');
@@ -352,7 +284,6 @@ export class GraphProcessor {
         const description = record.get('description');
         const entity = record.get('e');
         const props = entity.properties;
-        
         return {
           id: entityId,
           label: name || entityId,
@@ -365,13 +296,11 @@ export class GraphProcessor {
           }
         };
       });
-      
       const edges = relResult.records.map((record, idx) => {
         const sourceId = record.get('sourceId');
         const targetId = record.get('targetId');
         const rel = record.get('r');
         const relType = record.get('relType');
-        
         return {
           id: `rel-${idx}`,
           source: sourceId,
@@ -380,9 +309,7 @@ export class GraphProcessor {
           properties: rel.properties || {}
         };
       });
-      
       console.log(`[Graph Processor] Document KG built for ${documentId}: ${nodes.length} nodes, ${edges.length} edges`);
-      
       return {
         nodes,
         edges,
@@ -397,42 +324,57 @@ export class GraphProcessor {
       await session.close();
     }
   }
-  
-  /**
-   * Build query-specific knowledge graph (subgraph relevant to query)
-   */
+
   async buildQueryKnowledgeGraph(
     userId: string,
     query: string,
     relevantEntityIds: string[]
   ): Promise<KnowledgeGraph> {
     const session = await getSession();
-    
     try {
-      // Get entities and their neighbors
-      const result = await session.run(
-        `
-        MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
-        WHERE e.id IN $entityIds AND (e.isDuplicate IS NULL OR e.isDuplicate <> true)
-        OPTIONAL MATCH (e)-[r]-(connected:Entity)
-        WHERE connected.isDuplicate IS NULL OR connected.isDuplicate <> true
-        RETURN e, collect(distinct {rel: r, node: connected, relType: type(r)}) as connections
-        `,
-        { userId, entityIds: relevantEntityIds }
-      );
-      
+      let result;
+      if (relevantEntityIds.length > 0) {
+        result = await session.run(
+          `
+          MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
+          WHERE e.id IN $entityIds AND (e.isDuplicate IS NULL OR e.isDuplicate <> true)
+          OPTIONAL MATCH (e)-[r]-(connected:Entity)
+          WHERE connected.isDuplicate IS NULL OR connected.isDuplicate <> true
+          RETURN e, collect(distinct {rel: r, node: connected, relType: type(r)}) as connections
+          `,
+          { userId, entityIds: relevantEntityIds }
+        );
+      } else {
+        console.log('[Graph Processor] No entity IDs provided, searching by query keywords:', query);
+        const keywords = query.toLowerCase()
+          .split(/\s+/)
+          .filter(word => word.length > 3)
+          .slice(0, 5);
+        result = await session.run(
+          `
+          MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
+          WHERE (e.isDuplicate IS NULL OR e.isDuplicate <> true)
+          AND (
+            any(keyword IN $keywords WHERE toLower(e.name) CONTAINS keyword)
+            OR any(keyword IN $keywords WHERE toLower(e.description) CONTAINS keyword)
+          )
+          WITH e LIMIT 15
+          OPTIONAL MATCH (e)-[r]-(connected:Entity)
+          WHERE connected.isDuplicate IS NULL OR connected.isDuplicate <> true
+          RETURN e, collect(distinct {rel: r, node: connected, relType: type(r)}) as connections
+          `,
+          { userId, keywords }
+        );
+      }
       console.log(`[Graph Processor] Query graph: Found ${result.records.length} entities with connections`);
-      
       const nodes: any[] = [];
       const edges: any[] = [];
       const seenNodes = new Set<string>();
       const seenEdges = new Set<string>();
-      
       result.records.forEach(record => {
         const entity = record.get('e');
         const connections = record.get('connections');
         const props = entity.properties;
-        
         if (!seenNodes.has(props.id)) {
           nodes.push({
             id: props.id,
@@ -446,12 +388,10 @@ export class GraphProcessor {
           });
           seenNodes.add(props.id);
         }
-        
         connections.forEach((conn: any) => {
           if (conn.node && conn.rel) {
             const connProps = conn.node.properties;
             const connectedId = connProps.id;
-            
             if (!seenNodes.has(connectedId)) {
               nodes.push({
                 id: connectedId,
@@ -465,7 +405,6 @@ export class GraphProcessor {
               });
               seenNodes.add(connectedId);
             }
-            
             const edgeKey = `${props.id}-${conn.relType}-${connectedId}`;
             if (!seenEdges.has(edgeKey)) {
               edges.push({
@@ -480,9 +419,7 @@ export class GraphProcessor {
           }
         });
       });
-      
       console.log(`[Graph Processor] Query KG built: ${nodes.length} nodes, ${edges.length} edges`);
-      
       return {
         nodes,
         edges,
@@ -497,29 +434,20 @@ export class GraphProcessor {
       await session.close();
     }
   }
-  
-  /**
-   * Cosine similarity between two vectors
-   */
+
   private cosineSimilarity(a: number[], b: number[]): number {
     if (a.length !== b.length) return 0;
-    
     let dotProduct = 0;
     let normA = 0;
     let normB = 0;
-    
     for (let i = 0; i < a.length; i++) {
       dotProduct += a[i] * b[i];
       normA += a[i] * a[i];
       normB += b[i] * b[i];
     }
-    
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
-  
-  /**
-   * Calculate graph statistics
-   */
+
   async getGraphStatistics(userId: string): Promise<{
     totalEntities: number;
     totalRelationships: number;
@@ -527,7 +455,6 @@ export class GraphProcessor {
     relationshipTypes: Record<string, number>;
   }> {
     const session = await getSession();
-    
     try {
       const statsResult = await session.run(
         `
@@ -541,25 +468,20 @@ export class GraphProcessor {
         `,
         { userId }
       );
-      
       console.log(`[Graph Processor] Statistics query completed`);
-      
       const record = statsResult.records[0];
       const entityCount = record?.get('entityCount')?.toNumber() || 0;
       const relCount = record?.get('relCount')?.toNumber() || 0;
       const types = record?.get('types') || [];
       const relTypes = record?.get('relTypes') || [];
-      
       const entityTypes: Record<string, number> = {};
       types.forEach((type: string) => {
         entityTypes[type] = (entityTypes[type] || 0) + 1;
       });
-      
       const relationshipTypes: Record<string, number> = {};
       relTypes.forEach((type: string) => {
         relationshipTypes[type] = (relationshipTypes[type] || 0) + 1;
       });
-      
       return {
         totalEntities: entityCount,
         totalRelationships: relCount,
