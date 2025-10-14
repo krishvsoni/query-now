@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
             const relevantEntityIds: string[] = [];
             let finalAnswer = '';
             let sources: any[] = [];
+            let queryKnowledgeGraph: any = null;
             
             for await (const chunk of reasoningEngine.streamReasoning({
               userId: user.id,
@@ -146,25 +147,74 @@ export async function POST(request: NextRequest) {
               }
             }
             
-            if (relevantEntityIds.length > 0) {
+            // Always try to build a response graph if we got any results
+            // Even if entity search didn't find entities, we can still build a graph from vector results
+            if (relevantEntityIds.length > 0 || sources.length > 0) {
               try {
-                const queryKnowledgeGraph = await graphProcessor.buildQueryKnowledgeGraph(
+                // If we have entity IDs, use those; otherwise try to extract from vector results
+                let entityIdsForGraph = relevantEntityIds.slice(0, 10);
+                
+                // If no entities found, try to build graph from document context
+                if (entityIdsForGraph.length === 0 && sources.length > 0) {
+                  console.log('[Building Graph] No entities found, building from query context');
+                }
+                
+                queryKnowledgeGraph = await graphProcessor.buildQueryKnowledgeGraph(
                   user.id,
                   query,
-                  relevantEntityIds.slice(0, 10)
+                  entityIdsForGraph.length > 0 ? entityIdsForGraph : []
                 );
                 
-                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
-                  type: 'knowledge_graph',
-                  graph: queryKnowledgeGraph
-                })}\n\n`));
-                
-                await pipeline.bufferStreamMessage(sessionId, {
-                  type: 'knowledge_graph',
-                  graph: queryKnowledgeGraph,
-                  timestamp: Date.now()
-                });
+                // Only send if we actually got a graph with nodes
+                if (queryKnowledgeGraph && queryKnowledgeGraph.nodes && queryKnowledgeGraph.nodes.length > 0) {
+                  // Sanitize the graph data to prevent JSON serialization issues
+                  const sanitizedGraph = {
+                    nodes: queryKnowledgeGraph.nodes.map((node: any) => ({
+                      id: String(node.id || ''),
+                      label: String(node.label || node.name || ''),
+                      type: String(node.type || 'CONCEPT'),
+                      properties: node.properties || {}
+                    })),
+                    edges: (queryKnowledgeGraph.edges || []).map((edge: any) => ({
+                      id: String(edge.id || `${edge.source}-${edge.target}`),
+                      source: String(edge.source || ''),
+                      target: String(edge.target || ''),
+                      label: String(edge.type || edge.label || 'RELATED'),
+                      type: String(edge.type || 'RELATED')
+                    })),
+                    metadata: queryKnowledgeGraph.metadata || {}
+                  };
+                  
+                  try {
+                    const graphMessage = JSON.stringify({
+                      type: 'knowledge_graph',
+                      graph: sanitizedGraph
+                    });
+                    
+                    controller.enqueue(new TextEncoder().encode(`data: ${graphMessage}\n\n`));
+                    
+                    await pipeline.bufferStreamMessage(sessionId, {
+                      type: 'knowledge_graph',
+                      graph: sanitizedGraph,
+                      timestamp: Date.now()
+                    });
+                    
+                    console.log('[Response Graph] Built and sent graph with', sanitizedGraph.nodes.length, 'nodes and', sanitizedGraph.edges.length, 'edges');
+                  } catch (jsonError) {
+                    console.error('[Response Graph] JSON serialization error:', jsonError);
+                    // Try sending a simplified version
+                    controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+                      type: 'knowledge_graph',
+                      graph: {
+                        nodes: sanitizedGraph.nodes.slice(0, 20), // Limit to 20 nodes if too large
+                        edges: sanitizedGraph.edges.slice(0, 30),
+                        metadata: { limited: true, originalNodeCount: sanitizedGraph.nodes.length }
+                      }
+                    })}\n\n`));
+                  }
+                }
               } catch (error) {
+                console.error('[Knowledge Graph Error]:', error);
               }
             }
             
@@ -180,10 +230,7 @@ export async function POST(request: NextRequest) {
             
             saveChatMessage(user.id, sessionId, 'assistant', finalAnswer, {
               sources,
-              knowledgeGraph: relevantEntityIds.length > 0 ? {
-                entityIds: relevantEntityIds,
-                nodeCount: relevantEntityIds.length
-              } : undefined,
+              knowledgeGraph: relevantEntityIds.length > 0 ? queryKnowledgeGraph : undefined,
               documentIds: filteredDocIds
             }).catch(err => {});
             
