@@ -697,7 +697,7 @@ export default function ResponseGraph({
           <select
             value={selectedRelationType || ""}
             onChange={(e) => setSelectedRelationType(e.target.value || null)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+            className="px-3 py-2 border border-gray-300 text-black rounded-md text-sm"
           >
             <option value="">All Relations</option>
             {relationshipTypes.map((type) => (
@@ -1000,7 +1000,6 @@ export default function ResponseGraph({
             d3AlphaMin={0.001}
             d3AlphaDecay={0.01}
             d3VelocityDecay={0.25}
-            chargeStrength={-300}
             onNodeClick={handleNodeClick}
             onNodeHover={handleNodeHover}
             cooldownTicks={200}
