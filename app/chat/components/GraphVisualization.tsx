@@ -1,11 +1,15 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { 
   MagnifyingGlassIcon, 
   AdjustmentsHorizontalIcon,
-  XMarkIcon 
+  XMarkIcon,
+  SparklesIcon,
+  ArrowPathIcon,
+  RectangleGroupIcon,
+  CodeBracketIcon
 } from '@heroicons/react/24/outline';
 
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
@@ -60,6 +64,21 @@ export default function GraphVisualization({
   const [selectedNodeTypes, setSelectedNodeTypes] = useState<string[]>([]);
   const [filteredData, setFilteredData] = useState<GraphData>({ nodes: [], links: [] });
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [showAISearch, setShowAISearch] = useState(false);
+  const [aiSearchQuery, setAiSearchQuery] = useState('');
+  const [isAISearching, setIsAISearching] = useState(false);
+  const [aiSearchResults, setAiSearchResults] = useState<Node[]>([]);
+  const [showTraversal, setShowTraversal] = useState(false);
+  const [traversalStart, setTraversalStart] = useState<string>('');
+  const [traversalEnd, setTraversalEnd] = useState<string>('');
+  const [traversalPath, setTraversalPath] = useState<{nodes: Node[], distance: number} | null>(null);
+  const [showCypherBuilder, setShowCypherBuilder] = useState(false);
+  const [customCypher, setCustomCypher] = useState('');
+  const [cypherResults, setCypherResults] = useState<any>(null);
+  const [selectedRelationType, setSelectedRelationType] = useState<string>('');
+  const [showGeneratedCypher, setShowGeneratedCypher] = useState(false);
+  const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
   const fgRef = useRef<any>(null);
 
   const nodeTypeConfig = {
@@ -73,9 +92,107 @@ export default function GraphVisualization({
     default: { color: '#6B7280', size: 5 }
   };
 
+  const handleAISearch = useCallback(async () => {
+    if (!aiSearchQuery.trim()) return;
+    setIsAISearching(true);
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Find nodes in this knowledge graph that match: "${aiSearchQuery}". Graph entities: ${graphData.nodes.map(n => `${n.name} (${n.type})`).join(', ')}`
+          }]
+        })
+      });
+      const data = await response.json();
+      const foundNodes = graphData.nodes.filter(node => 
+        data.message?.toLowerCase().includes(node.name.toLowerCase())
+      );
+      setAiSearchResults(foundNodes);
+      setHighlightedNodes(new Set(foundNodes.map(n => n.id)));
+      if (foundNodes.length > 0 && fgRef.current) {
+        const firstNode: any = foundNodes[0];
+        fgRef.current.centerAt(firstNode.x, firstNode.y, 1000);
+        fgRef.current.zoom(2, 1000);
+      }
+    } catch (error) {
+      console.error('AI search failed:', error);
+    } finally {
+      setIsAISearching(false);
+    }
+  }, [aiSearchQuery, graphData.nodes]);
+
+  const findShortestPath = useCallback((startId: string, endId: string) => {
+    const visited = new Set<string>();
+    const queue: { nodeId: string; path: string[] }[] = [{ nodeId: startId, path: [startId] }];
+    while (queue.length > 0) {
+      const { nodeId, path } = queue.shift()!;
+      if (nodeId === endId) {
+        const pathNodes = path.map(id => graphData.nodes.find(n => n.id === id)!).filter(Boolean);
+        return { nodes: pathNodes, distance: path.length - 1 };
+      }
+      if (visited.has(nodeId)) continue;
+      visited.add(nodeId);
+      const neighbors = graphData.links.filter(
+        link => link.source === nodeId || link.target === nodeId
+      );
+      for (const link of neighbors) {
+        const nextId = link.source === nodeId ? link.target : link.source;
+        if (!visited.has(nextId)) {
+          queue.push({ nodeId: nextId, path: [...path, nextId] });
+        }
+      }
+    }
+    return null;
+  }, [graphData]);
+
+  const handleTraversal = useCallback(() => {
+    if (!traversalStart || !traversalEnd) return;
+    const path = findShortestPath(traversalStart, traversalEnd);
+    setTraversalPath(path);
+    if (path) {
+      const pathNodeIds = new Set(path.nodes.map(n => n.id));
+      setHighlightedNodes(pathNodeIds);
+      if (fgRef.current && path.nodes.length > 0) {
+        const centerNode: any = path.nodes[Math.floor(path.nodes.length / 2)];
+        fgRef.current.centerAt(centerNode.x, centerNode.y, 1000);
+      }
+    }
+  }, [traversalStart, traversalEnd, findShortestPath]);
+
+  const executeCypherQuery = useCallback(async () => {
+    if (!customCypher.trim()) return;
+    try {
+      const response = await fetch('/api/graph', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cypherQuery: customCypher })
+      });
+      const data = await response.json();
+      setCypherResults(data);
+    } catch (error) {
+      console.error('Cypher query execution failed:', error);
+    }
+  }, [customCypher]);
+
+  const relationshipTypes = Array.from(new Set(graphData.links.map(l => l.type)));
+
+  const generateCypherQuery = useCallback(() => {
+    const nodeStatements = filteredData.nodes.map((node, idx) => {
+      return `CREATE (n${idx}:${node.type} {id: "${node.id}", name: "${node.name.replace(/"/g, '\\"')}", type: "${node.type}"})`;
+    }).join('\n');
+    const edgeStatements = filteredData.links.map(link => {
+      const sourceIdx = filteredData.nodes.findIndex(n => n.id === link.source);
+      const targetIdx = filteredData.nodes.findIndex(n => n.id === link.target);
+      return `CREATE (n${sourceIdx})-[:${link.type}]->(n${targetIdx})`;
+    }).join('\n');
+    return `// Create Nodes\n${nodeStatements}\n\n// Create Relationships\n${edgeStatements}`;
+  }, [filteredData]);
+
   const fetchGraphData = async () => {
     if (!isOpen) return;
-    
     if (preloadedGraphData) {
       const processedData = processGraphData(preloadedGraphData);
       setGraphData(processedData);
@@ -84,10 +201,8 @@ export default function GraphVisualization({
       setSelectedNodeTypes(types);
       return;
     }
-
     setLoading(true);
     setError(null);
-
     try {
       const params = new URLSearchParams();
       params.append('mode', mode);
@@ -115,7 +230,21 @@ export default function GraphVisualization({
   const processGraphData = (rawData: any): GraphData => {
     const rawNodes = rawData.nodes || [];
     const rawLinks = rawData.links || rawData.edges || [];
-    const nodes = rawNodes.map((node: any) => {
+    const nodeMap = new Map<string, any>();
+    rawNodes.forEach((node: any) => {
+      const normalizedId = node.id.toLowerCase().trim();
+      if (nodeMap.has(normalizedId)) {
+        const existing = nodeMap.get(normalizedId);
+        const existingProps = Object.keys(existing.properties || {}).length;
+        const newProps = Object.keys(node.properties || {}).length;
+        if (newProps > existingProps) {
+          nodeMap.set(normalizedId, node);
+        }
+      } else {
+        nodeMap.set(normalizedId, node);
+      }
+    });
+    const nodes = Array.from(nodeMap.values()).map((node: any) => {
       const config = nodeTypeConfig[node.type as keyof typeof nodeTypeConfig] || nodeTypeConfig.default;
       return {
         id: node.id,
@@ -127,13 +256,23 @@ export default function GraphVisualization({
         group: Object.keys(nodeTypeConfig).indexOf(node.type) || 0
       };
     });
-    const links = rawLinks.map((link: any) => ({
-      source: link.source,
-      target: link.target,
-      type: link.type || 'RELATED_TO',
-      color: '#94A3B8',
-      strength: link.properties?.strength || link.strength || 1
-    }));
+    const validNodeIds = new Set(nodes.map(n => n.id));
+    const seenEdges = new Set<string>();
+    const links = rawLinks
+      .filter((link: any) => {
+        const edgeKey = `${link.source}|${link.type || 'RELATED_TO'}|${link.target}`;
+        if (seenEdges.has(edgeKey)) return false;
+        if (!validNodeIds.has(link.source) || !validNodeIds.has(link.target)) return false;
+        seenEdges.add(edgeKey);
+        return true;
+      })
+      .map((link: any) => ({
+        source: link.source,
+        target: link.target,
+        type: link.type || 'RELATED_TO',
+        color: '#94A3B8',
+        strength: link.properties?.strength || link.strength || 1
+      }));
     return { nodes, links };
   };
 
@@ -147,21 +286,25 @@ export default function GraphVisualization({
         const matchesSearch = !searchTerm || 
           node.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (node.description && node.description.toLowerCase().includes(searchTerm.toLowerCase()));
-        const matchesType = selectedNodeTypes.includes(node.type);
+        const matchesType = selectedNodeTypes.length === 0 || selectedNodeTypes.includes(node.type);
         return matchesSearch && matchesType;
       }),
       links: graphData.links.filter(link => {
         const sourceNode = graphData.nodes.find(n => n.id === link.source);
         const targetNode = graphData.nodes.find(n => n.id === link.target);
+        const matchesRelationType = !selectedRelationType || link.type === selectedRelationType;
         return sourceNode && targetNode && 
-               selectedNodeTypes.includes(sourceNode.type) && 
-               selectedNodeTypes.includes(targetNode.type);
+               (selectedNodeTypes.length === 0 || 
+                (selectedNodeTypes.includes(sourceNode.type) && selectedNodeTypes.includes(targetNode.type))) &&
+               matchesRelationType;
       })
     };
     setFilteredData(filtered);
-  }, [searchTerm, selectedNodeTypes, graphData]);
+  }, [searchTerm, selectedNodeTypes, graphData, selectedRelationType]);
 
-  const handleNodeClick = (node: any) => {};
+  const handleNodeClick = (node: any) => {
+    setSelectedNode(node);
+  };
 
   const handleNodeHover = (node: any | null) => {
     setHoveredNode(node ? node.id : null);
@@ -180,18 +323,27 @@ export default function GraphVisualization({
     const fontSize = 12 / globalScale;
     ctx.font = `${fontSize}px Sans-Serif`;
     ctx.beginPath();
-    ctx.arc(node.x, node.y, node.size, 0, 2 * Math.PI, false);
-    ctx.fillStyle = node.color;
+    ctx.arc(node.x, node.y, node.size * 1.2, 0, 2 * Math.PI, false);
+    if (highlightedNodes.has(node.id)) {
+      ctx.fillStyle = '#fbbf24';
+    } else {
+      ctx.fillStyle = node.color;
+    }
     ctx.fill();
-    if (hoveredNode === node.id) {
+    if (hoveredNode === node.id || selectedNode?.id === node.id) {
       ctx.strokeStyle = '#000';
-      ctx.lineWidth = 2 / globalScale;
+      ctx.lineWidth = 2.5 / globalScale;
+      ctx.stroke();
+    }
+    if (highlightedNodes.has(node.id)) {
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3 / globalScale;
       ctx.stroke();
     }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#333';
-    ctx.fillText(label, node.x, node.y + node.size + fontSize);
+    ctx.fillStyle = highlightedNodes.has(node.id) ? '#b45309' : '#333';
+    ctx.fillText(label, node.x, node.y + node.size + fontSize * 1.2);
   };
 
   if (!isOpen) return null;
@@ -252,6 +404,44 @@ export default function GraphVisualization({
               ))}
             </div>
           </div>
+          <select
+            value={selectedRelationType}
+            onChange={(e) => setSelectedRelationType(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+          >
+            <option value="">All Relations</option>
+            {relationshipTypes.map(type => (
+              <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowAISearch(!showAISearch)}
+            className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-purple-700 hover:to-pink-700"
+          >
+            <SparklesIcon className="h-4 w-4" />
+            AI Search
+          </button>
+          <button
+            onClick={() => setShowTraversal(!showTraversal)}
+            className="px-3 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-green-700 hover:to-teal-700"
+          >
+            <ArrowPathIcon className="h-4 w-4" />
+            Traverse
+          </button>
+          <button
+            onClick={() => setShowCypherBuilder(!showCypherBuilder)}
+            className="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-blue-700 hover:to-cyan-700"
+          >
+            <CodeBracketIcon className="h-4 w-4" />
+            Cypher
+          </button>
+          <button
+            onClick={() => setShowGeneratedCypher(!showGeneratedCypher)}
+            className="px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-indigo-700 hover:to-purple-700"
+          >
+            <CodeBracketIcon className="h-4 w-4" />
+            View Query
+          </button>
         </div>
         <div className="flex-1 relative">
           {loading ? (
@@ -279,32 +469,242 @@ export default function GraphVisualization({
               </div>
             </div>
           ) : (
-            <ForceGraph2D
-              ref={fgRef}
-              graphData={filteredData}
-              nodeLabel={(node: any) => `${node.name} (${node.type})`}
-              nodeColor={(node: any) => node.color}
-              nodeVal={(node: any) => node.size}
-              nodeCanvasObject={paintNode}
-              nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
-                ctx.fillStyle = color;
-                ctx.beginPath();
-                ctx.arc(node.x, node.y, node.size * 1.5, 0, 2 * Math.PI, false);
-                ctx.fill();
-              }}
-              linkColor={(link: any) => link.color}
-              linkWidth={(link: any) => Math.sqrt(link.strength || 1)}
-              linkDirectionalParticles={2}
-              linkDirectionalParticleWidth={2}
-              onNodeClick={handleNodeClick}
-              onNodeHover={handleNodeHover}
-              cooldownTicks={100}
-              d3AlphaDecay={0.02}
-              d3VelocityDecay={0.3}
-              enableZoomInteraction={true}
-              enablePanInteraction={true}
-              backgroundColor="#ffffff"
-            />
+            <>
+              <ForceGraph2D
+                ref={fgRef}
+                graphData={filteredData}
+                nodeLabel={(node: any) => `${node.name} (${node.type})`}
+                nodeColor={(node: any) => node.color}
+                nodeVal={(node: any) => node.size}
+                nodeCanvasObject={paintNode}
+                nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
+                  ctx.fillStyle = color;
+                  ctx.beginPath();
+                  ctx.arc(node.x, node.y, node.size * 1.8, 0, 2 * Math.PI, false);
+                  ctx.fill();
+                }}
+                linkColor={(link: any) => link.color}
+                linkWidth={(link: any) => Math.sqrt(link.strength || 1) * 1.5}
+                linkDirectionalParticles={2}
+                linkDirectionalParticleWidth={2}
+                linkDistance={100}
+                linkStrength={0.3}
+                onNodeClick={handleNodeClick}
+                onNodeHover={handleNodeHover}
+                cooldownTicks={200}
+                d3AlphaDecay={0.01}
+                d3VelocityDecay={0.25}
+                warmupTicks={100}
+                enableNodeDrag={true}
+                enableZoomInteraction={true}
+                enablePanInteraction={true}
+                backgroundColor="#ffffff"
+              />
+              {showAISearch && (
+                <div className="absolute top-4 right-4 bg-white rounded-lg shadow-2xl p-4 w-80 border border-gray-200 max-h-96 overflow-y-auto z-10">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <SparklesIcon className="h-5 w-5 text-purple-600" />
+                      AI Search
+                    </h3>
+                    <button onClick={() => setShowAISearch(false)} className="text-gray-400 hover:text-gray-600">
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Describe what you're looking for..."
+                    value={aiSearchQuery}
+                    onChange={(e) => setAiSearchQuery(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleAISearch()}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm mb-2"
+                  />
+                  <button
+                    onClick={handleAISearch}
+                    disabled={isAISearching}
+                    className="w-full px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-md text-sm hover:from-purple-700 hover:to-pink-700 disabled:opacity-50"
+                  >
+                    {isAISearching ? 'Searching...' : 'Search'}
+                  </button>
+                  {aiSearchResults.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs font-semibold text-gray-700">Results:</p>
+                      {aiSearchResults.map(node => (
+                        <div
+                          key={node.id}
+                          onClick={() => setSelectedNode(node)}
+                          className="p-2 bg-gray-50 rounded-md hover:bg-gray-100 cursor-pointer text-sm"
+                        >
+                          <div className="font-medium">{node.name}</div>
+                          <div className="text-xs text-gray-600">{node.type}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {showTraversal && (
+                <div className="absolute top-4 right-4 bg-white rounded-lg shadow-2xl p-4 w-80 border border-gray-200 z-10">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <ArrowPathIcon className="h-5 w-5 text-green-600" />
+                      Path Finder
+                    </h3>
+                    <button onClick={() => setShowTraversal(false)} className="text-gray-400 hover:text-gray-600">
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">Start Node</label>
+                      <select
+                        value={traversalStart}
+                        onChange={(e) => setTraversalStart(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm"
+                      >
+                        <option value="">Select...</option>
+                        {graphData.nodes.map(node => (
+                          <option key={node.id} value={node.id}>{node.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 block mb-1">End Node</label>
+                      <select
+                        value={traversalEnd}
+                        onChange={(e) => setTraversalEnd(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm"
+                      >
+                        <option value="">Select...</option>
+                        {graphData.nodes.map(node => (
+                          <option key={node.id} value={node.id}>{node.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={handleTraversal}
+                      disabled={!traversalStart || !traversalEnd}
+                      className="w-full px-3 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-md text-sm hover:from-green-700 hover:to-teal-700 disabled:opacity-50"
+                    >
+                      Find Path
+                    </button>
+                    {traversalPath && (
+                      <div className="mt-3 p-3 bg-green-50 rounded-md">
+                        <p className="text-xs font-semibold text-green-900 mb-1">
+                          Distance: {traversalPath.distance} hops
+                        </p>
+                        <div className="space-y-1">
+                          {traversalPath.nodes.map((node, idx) => (
+                            <div key={idx} className="text-xs text-gray-700">
+                              {idx > 0 && '→ '}{node.name}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {showCypherBuilder && (
+                <div className="absolute top-4 right-4 bg-white rounded-lg shadow-2xl p-4 w-96 border border-gray-200 max-h-96 overflow-y-auto z-10">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <CodeBracketIcon className="h-5 w-5 text-blue-600" />
+                      Cypher Query
+                    </h3>
+                    <button onClick={() => setShowCypherBuilder(false)} className="text-gray-400 hover:text-gray-600">
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <textarea
+                    value={customCypher}
+                    onChange={(e) => setCustomCypher(e.target.value)}
+                    placeholder="MATCH (n:Entity) RETURN n LIMIT 25"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono mb-2 h-32"
+                  />
+                  <button
+                    onClick={executeCypherQuery}
+                    className="w-full px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-md text-sm hover:from-blue-700 hover:to-cyan-700"
+                  >
+                    Execute Query
+                  </button>
+                  {cypherResults && (
+                    <div className="mt-3 p-3 bg-blue-50 rounded-md max-h-48 overflow-y-auto">
+                      <pre className="text-xs text-gray-800 whitespace-pre-wrap">
+                        {JSON.stringify(cypherResults, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
+              {showGeneratedCypher && (
+                <div className="absolute top-4 left-4 bg-white rounded-lg shadow-2xl p-4 w-96 border border-gray-200 max-h-96 overflow-y-auto z-10">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <CodeBracketIcon className="h-5 w-5 text-indigo-600" />
+                      Generated Cypher Query
+                    </h3>
+                    <button onClick={() => setShowGeneratedCypher(false)} className="text-gray-400 hover:text-gray-600">
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="bg-slate-900 rounded-lg p-3 overflow-x-auto">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(generateCypherQuery())}
+                      className="mb-2 px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded flex items-center gap-1"
+                    >
+                      Copy Query
+                    </button>
+                    <pre className="text-xs text-cyan-300 font-mono whitespace-pre-wrap">
+                      {generateCypherQuery()}
+                    </pre>
+                  </div>
+                  <div className="mt-3 text-xs text-gray-600">
+                    <p><strong>Nodes:</strong> {filteredData.nodes.length}</p>
+                    <p><strong>Relationships:</strong> {filteredData.links.length}</p>
+                  </div>
+                </div>
+              )}
+              {selectedNode && (
+                <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-2xl p-4 w-80 border border-gray-200 z-10">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-gray-900">{selectedNode.name}</h3>
+                    <button onClick={() => setSelectedNode(null)} className="text-gray-400 hover:text-gray-600">
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-700">Type:</span>
+                      <span className="px-2 py-1 bg-gray-100 rounded-md text-gray-800">{selectedNode.type}</span>
+                    </div>
+                    {selectedNode.description && (
+                      <div>
+                        <span className="font-medium text-gray-700">Description:</span>
+                        <p className="text-gray-600 mt-1">{selectedNode.description}</p>
+                      </div>
+                    )}
+                    <div className="pt-2 border-t border-gray-200">
+                      <span className="font-medium text-gray-700">Connections:</span>
+                      <div className="mt-1 space-y-1">
+                        {graphData.links
+                          .filter(link => link.source === selectedNode.id || link.target === selectedNode.id)
+                          .slice(0, 5)
+                          .map((link, idx) => {
+                            const otherNodeId = link.source === selectedNode.id ? link.target : link.source;
+                            const otherNode = graphData.nodes.find(n => n.id === otherNodeId);
+                            return (
+                              <div key={idx} className="text-xs text-gray-600">
+                                {link.type} → {otherNode?.name || 'Unknown'}
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
         <div className="p-4 border-t border-gray-200 bg-gray-50">

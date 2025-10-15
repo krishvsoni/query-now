@@ -49,6 +49,7 @@ export class ResponseGraphGenerator {
         const nodeMap = new Map<string, GraphNode>();
         const edgeSet = new Set<string>();
         let cypherQuery = '';
+        
         if (toolResults && toolResults.length > 0 && userId) {
             const neo4jGraph = await this.extractFromNeo4j(toolResults, userId, query);
             if (neo4jGraph) {
@@ -65,35 +66,49 @@ export class ResponseGraphGenerator {
                 });
             }
         }
+        
         const entities = await this.extractEntities(response);
         const relationships = await this.extractRelationships(response, entities);
+        
+        const queryLower = query.toLowerCase();
+        const responseLower = response.toLowerCase();
+        
         entities.forEach((entity) => {
-            const nodeId = this.generateNodeId(entity.name, entity.type);
-            if (!nodeMap.has(nodeId)) {
-                const node: GraphNode = {
-                    id: nodeId,
-                    label: entity.name,
-                    type: entity.type,
-                    properties: {
-                        description: entity.description || '',
-                        confidence: entity.confidence || 0.8,
-                        mentions: entity.mentions || 1,
-                        extractedFrom: 'llm_response'
-                    }
-                };
-                nodeMap.set(nodeId, node);
-            } else {
-                const existing = nodeMap.get(nodeId)!;
-                existing.properties.mentions = (existing.properties.mentions || 0) + (entity.mentions || 1);
-                existing.properties.confidence = Math.max(
-                    existing.properties.confidence || 0,
-                    entity.confidence || 0
-                );
+            const isRelevant = responseLower.includes(entity.name.toLowerCase()) ||
+                              queryLower.includes(entity.name.toLowerCase());
+            
+            if (isRelevant) {
+                const nodeId = this.generateNodeId(entity.name, entity.type);
+                if (!nodeMap.has(nodeId)) {
+                    const node: GraphNode = {
+                        id: nodeId,
+                        label: entity.name,
+                        type: entity.type,
+                        properties: {
+                            description: entity.description || '',
+                            confidence: entity.confidence || 0.8,
+                            mentions: entity.mentions || 1,
+                            extractedFrom: 'llm_response',
+                            relevanceScore: this.calculateRelevance(entity.name, query, response)
+                        }
+                    };
+                    nodeMap.set(nodeId, node);
+                } else {
+                    const existing = nodeMap.get(nodeId)!;
+                    existing.properties.mentions = (existing.properties.mentions || 0) + (entity.mentions || 1);
+                    existing.properties.confidence = Math.max(
+                        existing.properties.confidence || 0,
+                        entity.confidence || 0
+                    );
+                }
             }
         });
         relationships.forEach((rel) => {
             const sourceId = this.generateNodeId(rel.source, rel.sourceType);
             const targetId = this.generateNodeId(rel.target, rel.targetType);
+            
+            if (sourceId === targetId) return;
+            
             const edgeKey = `${sourceId}|${rel.type}|${targetId}`;
             if (!nodeMap.has(sourceId)) {
                 nodeMap.set(sourceId, {
@@ -102,7 +117,8 @@ export class ResponseGraphGenerator {
                     type: rel.sourceType,
                     properties: {
                         extractedFrom: 'llm_response',
-                        confidence: 0.7
+                        confidence: 0.7,
+                        relevanceScore: this.calculateRelevance(rel.source, query, response)
                     }
                 });
             }
@@ -113,7 +129,8 @@ export class ResponseGraphGenerator {
                     type: rel.targetType,
                     properties: {
                         extractedFrom: 'llm_response',
-                        confidence: 0.7
+                        confidence: 0.7,
+                        relevanceScore: this.calculateRelevance(rel.target, query, response)
                     }
                 });
             }
@@ -146,8 +163,12 @@ export class ResponseGraphGenerator {
             const sortedNodes = Array.from(nodeMap.entries())
                 .filter(([id]) => id !== 'query_node')
                 .sort((a, b) => {
-                    const scoreA = (a[1].properties.confidence || 0) * (a[1].properties.mentions || 1);
-                    const scoreB = (b[1].properties.confidence || 0) * (b[1].properties.mentions || 1);
+                    const scoreA = (a[1].properties.confidence || 0) * 
+                                  (a[1].properties.mentions || 1) * 
+                                  (a[1].properties.relevanceScore || 0.5);
+                    const scoreB = (b[1].properties.confidence || 0) * 
+                                  (b[1].properties.mentions || 1) * 
+                                  (b[1].properties.relevanceScore || 0.5);
                     return scoreB - scoreA;
                 })
                 .slice(0, 3);
@@ -604,6 +625,28 @@ export class ResponseGraphGenerator {
         return `${type.toLowerCase()}_${name.toLowerCase().replace(/\s+/g, '_')}`;
     }
 
+    private calculateRelevance(entityName: string, query: string, response: string): number {
+        const queryLower = query.toLowerCase();
+        const responseLower = response.toLowerCase();
+        const entityLower = entityName.toLowerCase();
+        
+        let score = 0;
+        
+        if (queryLower.includes(entityLower)) {
+            score += 0.5;
+        }
+        
+        const mentions = (responseLower.match(new RegExp(entityLower, 'g')) || []).length;
+        score += Math.min(mentions * 0.1, 0.4);
+        
+        const firstMention = responseLower.indexOf(entityLower);
+        if (firstMention >= 0 && firstMention < responseLower.length / 3) {
+            score += 0.1;
+        }
+        
+        return Math.min(score, 1);
+    }
+
     private truncateText(text: string, maxLength: number): string {
         if (text.length <= maxLength) return text;
         return text.substring(0, maxLength - 3) + '...';
@@ -683,24 +726,41 @@ export class ResponseGraphGenerator {
 
     filterRelevantNodes(graph: ResponseGraph, maxNodes: number = 15): ResponseGraph {
         if (graph.nodes.length <= maxNodes) return graph;
+        
         const nodeScores = new Map<string, number>();
         graph.nodes.forEach(node => {
             const connectionCount = graph.edges.filter(
                 e => e.source === node.id || e.target === node.id
             ).length;
             const confidence = node.properties.confidence || 0.5;
-            nodeScores.set(node.id, connectionCount * confidence);
+            const relevance = node.properties.relevanceScore || 0.5;
+            const mentions = node.properties.mentions || 1;
+            
+            const score = (connectionCount * 0.4) + 
+                         (confidence * 0.2) + 
+                         (relevance * 0.3) + 
+                         (Math.min(mentions, 5) * 0.02);
+            
+            nodeScores.set(node.id, score);
         });
+        
         const topNodeIds = new Set(
             Array.from(nodeScores.entries())
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, maxNodes)
                 .map(([id]) => id)
         );
+        
+        const queryNode = graph.nodes.find(n => n.type === 'QUERY');
+        if (queryNode) {
+            topNodeIds.add(queryNode.id);
+        }
+        
         const filteredNodes = graph.nodes.filter(n => topNodeIds.has(n.id));
         const filteredEdges = graph.edges.filter(
             e => topNodeIds.has(e.source) && topNodeIds.has(e.target)
         );
+        
         return {
             nodes: filteredNodes,
             edges: filteredEdges,
