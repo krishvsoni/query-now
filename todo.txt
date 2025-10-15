@@ -1,0 +1,11 @@
+
+
+central graph 
+
+and response graph fetch 
+Database information
+Nodes by user
+
+Relationships 
+
+Property keys

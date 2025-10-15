@@ -147,7 +147,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
       const reasoningSteps: ReasoningStep[] = [];
       let knowledgeGraph: any = null;
       let partialData = '';
-      let partialGraphData = ''; // Buffer for large graph data
+      let partialGraphData = '';
 
       try {
         while (true) {
@@ -155,10 +155,8 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
           if (done) break;
 
           const chunk = new TextDecoder().decode(value);
-          partialData += chunk; // Accumulate data
+          partialData += chunk;
           const lines = partialData.split('\n');
-          
-          // Keep the last incomplete line in the buffer
           partialData = lines.pop() || '';
 
           for (const line of lines) {
@@ -168,29 +166,19 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                 break;
               }
               if (!data) continue;
-              
-              // Handle knowledge_graph specially as it might be large
               if (data.includes('"type":"knowledge_graph"') || data.includes('"type": "knowledge_graph"')) {
                 partialGraphData += data;
-                
-                // Try to parse when we have complete JSON
                 try {
                   const parsed = JSON.parse(partialGraphData);
                   if (parsed.type === 'knowledge_graph' && parsed.graph) {
-                    console.log('[ChatInterface] ✓ Successfully parsed knowledge graph');
-                    console.log('[ChatInterface] Node count:', parsed.graph?.nodes?.length);
-                    console.log('[ChatInterface] Edge count:', parsed.graph?.edges?.length);
                     knowledgeGraph = parsed.graph;
                     setCurrentKnowledgeGraph(knowledgeGraph);
-                    partialGraphData = ''; // Clear buffer
+                    partialGraphData = '';
                   }
                 } catch (e) {
-                  // Still accumulating, continue
-                  console.log('[ChatInterface] Accumulating graph data... (size:', partialGraphData.length, 'bytes)');
                 }
                 continue;
               }
-              
               try {
                 const parsed = JSON.parse(data);
                 if (parsed.type === 'thinking') {
@@ -211,24 +199,18 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                   setThinkingStatus('Refining answer...');
                 }
               } catch (parseError) {
-                // Silently handle partial JSON
-                console.log('[ChatInterface] Parse error (partial data):', parseError);
               }
             }
           }
         }
-        
-        // Try final parse of any remaining graph data
         if (partialGraphData) {
           try {
             const parsed = JSON.parse(partialGraphData);
             if (parsed.type === 'knowledge_graph' && parsed.graph) {
-              console.log('[ChatInterface] ✓ Final parse of knowledge graph successful');
               knowledgeGraph = parsed.graph;
               setCurrentKnowledgeGraph(knowledgeGraph);
             }
           } catch (e) {
-            console.error('[ChatInterface] Failed to parse final graph data:', e);
           }
         }
       } finally {
@@ -244,12 +226,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
         knowledgeGraph,
         timestamp: Date.now()
       };
-
-      console.log('[ChatInterface] Final message knowledge graph:', {
-        hasGraph: !!knowledgeGraph,
-        nodeCount: knowledgeGraph?.nodes?.length || 0,
-        edgeCount: knowledgeGraph?.edges?.length || 0
-      });
 
       setMessages(prev => [...prev, finalMessage]);
       setStreamingMessage('');
@@ -376,7 +352,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
             </p>
           </div>
           <div className="flex items-center space-x-4">
-           
             <label className="flex items-center space-x-2 text-sm">
               <input
                 type="checkbox"
@@ -431,7 +406,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                   : 'bg-gray-100 text-gray-900'
               }`}
             >
-              {/* Knowledge Graph Indicator Badge */}
               {message.role === 'assistant' && 
                message.knowledgeGraph && 
                message.knowledgeGraph.nodes && 
@@ -443,14 +417,11 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                   Graph Available
                 </div>
               )}
-              
-              {/* Render markdown for assistant, plain text for user */}
               {message.role === 'assistant' ? (
                 <div className="prose prose-sm max-w-none prose-invert">
                   <ReactMarkdown 
                     remarkPlugins={[remarkGfm]}
                     components={{
-                      // Custom components for better styling
                       code: ({node, inline, className, children, ...props}: any) => {
                         return inline ? (
                           <code className="bg-gray-800 text-gray-100 px-1 py-0.5 rounded text-sm" {...props}>
@@ -505,15 +476,11 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
               ) : (
                 <div className="whitespace-pre-wrap">{message.content}</div>
               )}
-              
               {message.role === 'assistant' && showReasoning && message.reasoningChain && 
                 renderReasoningChain(message.reasoningChain)}
-              
               {message.role === 'assistant' && !showReasoning && renderSources(message.sources || [])}
-              
               {message.role === 'assistant' && (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {/* Knowledge Graph Button - Shows when graph is available */}
                   {message.knowledgeGraph && 
                    message.knowledgeGraph.nodes && 
                    Array.isArray(message.knowledgeGraph.nodes) && 
@@ -534,8 +501,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                       View Knowledge Graph ({message.knowledgeGraph.nodes.length} nodes)
                     </button>
                   )}
-                  
-                  {/* Show sources button when reasoning is hidden */}
                   {showReasoning && message.sources && message.sources.length > 0 && (
                     <button
                       onClick={() => setShowReasoning(false)}
@@ -545,8 +510,6 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                       Show Sources ({message.sources.length})
                     </button>
                   )}
-                  
-                  {/* Central Knowledge Graph fallback */}
                   {!message.knowledgeGraph && message.sources && message.sources.length > 0 && (
                     <button
                       onClick={() => onShowGraph?.('', 'central')}
@@ -624,9 +587,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                   </ReactMarkdown>
                 </div>
               )}
-              
               {showReasoning && currentReasoningSteps.length > 0 && renderReasoningChain(currentReasoningSteps)}
-              
               <div className="mt-2 flex items-center space-x-2">
                 {thinkingStatus && (
                   <div className="flex items-center space-x-2">
@@ -657,10 +618,9 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question about your documents..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-black focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             disabled={isLoading}
           />
-          
           {isLoading ? (
             <button
               type="button"
@@ -673,7 +633,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
             <button
               type="submit"
               disabled={!input.trim()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-blue-600  rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <PaperAirplaneIcon className="h-5 w-5" />
             </button>

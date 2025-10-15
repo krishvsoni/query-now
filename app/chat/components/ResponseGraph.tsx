@@ -28,7 +28,16 @@ interface Edge {
 interface ResponseGraphProps {
   isOpen: boolean
   onClose: () => void
-  graphData: { nodes: Node[]; edges: Edge[] }
+  graphData: { 
+    nodes: Node[]; 
+    edges: Edge[];
+    metadata?: {
+      cypherQuery?: string;
+      entityCount?: number;
+      relationshipCount?: number;
+      source?: string;
+    }
+  }
   query?: string
 }
 
@@ -88,8 +97,13 @@ function cleanGraphData(data: { nodes: Node[]; edges: Edge[] }): { nodes: Node[]
 export default function ResponseGraph({ isOpen, onClose, graphData, query }: ResponseGraphProps) {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [hoveredNode, setHoveredNode] = useState<string | null>(null)
-  const [showLegend, setShowLegend] = useState(true)
+  const [showLegend, setShowLegend] = useState(false)
   const [processedData, setProcessedData] = useState<ProcessedGraphData>({ nodes: [], links: [] })
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterType, setFilterType] = useState<string | null>(null)
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set())
+  const [showCypherQuery, setShowCypherQuery] = useState(false)
   const fgRef = useRef<any>(null)
 
   const nodeTypeConfig = {
@@ -191,18 +205,82 @@ export default function ResponseGraph({ isOpen, onClose, graphData, query }: Res
     ctx.font = `${fontSize}px Sans-Serif`
     ctx.beginPath()
     ctx.arc(node.x, node.y, node.size, 0, 2 * Math.PI, false)
-    ctx.fillStyle = node.color
+    if (highlightedNodes.has(node.id)) {
+      ctx.fillStyle = '#fbbf24'
+    } else {
+      ctx.fillStyle = node.color
+    }
     ctx.fill()
     if (hoveredNode === node.id || selectedNode?.id === node.id) {
       ctx.strokeStyle = '#000'
       ctx.lineWidth = 2 / globalScale
       ctx.stroke()
     }
+    if (highlightedNodes.has(node.id)) {
+      ctx.strokeStyle = '#fbbf24'
+      ctx.lineWidth = 3 / globalScale
+      ctx.stroke()
+    }
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#333'
+    ctx.fillStyle = highlightedNodes.has(node.id) ? '#b45309' : '#333'
     ctx.fillText(label, node.x, node.y + node.size + fontSize)
   }
+
+  const handleExport = (format: 'json' | 'png' | 'svg') => {
+    if (format === 'json') {
+      const dataStr = JSON.stringify(graphData, null, 2)
+      const dataBlob = new Blob([dataStr], { type: 'application/json' })
+      const url = URL.createObjectURL(dataBlob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `knowledge-graph-${Date.now()}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+    } else if (format === 'png' && fgRef.current) {
+      const canvas = fgRef.current.renderer().domElement
+      const link = document.createElement('a')
+      link.download = `knowledge-graph-${Date.now()}.png`
+      link.href = canvas.toDataURL()
+      link.click()
+    }
+    setShowExportMenu(false)
+  }
+
+  const handleSearch = (term: string) => {
+    setSearchTerm(term)
+    if (term.trim()) {
+      const matches = new Set(
+        processedData.nodes
+          .filter(n => 
+            n.name.toLowerCase().includes(term.toLowerCase()) ||
+            n.type.toLowerCase().includes(term.toLowerCase())
+          )
+          .map(n => n.id)
+      )
+      setHighlightedNodes(matches)
+    } else {
+      setHighlightedNodes(new Set())
+    }
+  }
+
+  const handleTypeFilter = (type: string | null) => {
+    setFilterType(type)
+  }
+
+  const getVisibleData = () => {
+    if (!filterType) return processedData
+
+    const visibleNodes = processedData.nodes.filter(n => n.type === filterType)
+    const visibleNodeIds = new Set(visibleNodes.map(n => n.id))
+    const visibleLinks = processedData.links.filter(
+      l => visibleNodeIds.has(l.source as string) && visibleNodeIds.has(l.target as string)
+    )
+
+    return { nodes: visibleNodes, links: visibleLinks }
+  }
+
+  const visibleData = getVisibleData()
 
   if (!isOpen) return null
 
@@ -274,6 +352,72 @@ export default function ResponseGraph({ isOpen, onClose, graphData, query }: Res
                 {processedData.links.length} Relationships
               </span>
             </div>
+            <div className="flex items-center gap-3 mt-4 ml-1">
+              <div className="relative flex-1 max-w-md">
+                <input
+                  type="text"
+                  placeholder="Search nodes..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="w-full px-4 py-2 pl-10 bg-white text-black border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                />
+                <svg className="w-5 h-5 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <select
+                value={filterType || ''}
+                onChange={(e) => handleTypeFilter(e.target.value || null)}
+                className="px-4 py-2 bg-white border text-black border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-medium"
+              >
+                <option value="">All Types</option>
+                <option value="PERSON">Person</option>
+                <option value="ORGANIZATION">Organization</option>
+                <option value="LOCATION">Location</option>
+                <option value="CONCEPT">Concept</option>
+                <option value="EVENT">Event</option>
+                <option value="TECHNOLOGY">Technology</option>
+                <option value="PRODUCT">Product</option>
+              </select>
+              <div className="relative">
+                <button
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  className="px-4 py-2 bg-white border border-slate-300 rounded-xl text-black hover:bg-slate-50 transition-colors text-sm font-medium flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Export
+                </button>
+                {showExportMenu && (
+                  <div className="absolute top-full mt-2 right-0 bg-white text-black rounded-xl shadow-xl border border-slate-200 py-2 z-10 min-w-[150px]">
+                    <button
+                      onClick={() => handleExport('json')}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 transition-colors"
+                    >
+                      Export as JSON
+                    </button>
+                    <button
+                      onClick={() => handleExport('png')}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 transition-colors"
+                    >
+                      Export as PNG
+                    </button>
+                  </div>
+                )}
+              </div>
+              {graphData.metadata?.cypherQuery && (
+                <button
+                  onClick={() => setShowCypherQuery(!showCypherQuery)}
+                  className="px-4 py-2 bg-indigo-50 border border-indigo-300 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-medium flex items-center gap-2 text-indigo-700"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                  {showCypherQuery ? 'Hide' : 'Show'} Cypher
+                </button>
+              )}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -284,10 +428,38 @@ export default function ResponseGraph({ isOpen, onClose, graphData, query }: Res
             </svg>
           </button>
         </div>
+        {showCypherQuery && graphData.metadata?.cypherQuery && (
+          <div className="px-6 pb-4 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
+            <div className="bg-slate-900 rounded-xl p-4 overflow-x-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                  </svg>
+                  Neo4j Cypher Query
+                </h3>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(graphData.metadata?.cypherQuery || '');
+                  }}
+                  className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs rounded-lg transition-colors flex items-center gap-1"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy
+                </button>
+              </div>
+              <pre className="text-xs text-cyan-300 font-mono whitespace-pre-wrap max-h-64 overflow-y-auto">
+                {graphData.metadata.cypherQuery}
+              </pre>
+            </div>
+          </div>
+        )}
         <div className="flex-1 relative bg-gradient-to-br from-slate-50 to-slate-100">
           <ForceGraph2D
             ref={fgRef}
-            graphData={processedData}
+            graphData={visibleData}
             nodeLabel={(node: any) => `${node.name} (${node.type})`}
             nodeColor={(node: any) => node.color}
             nodeVal={(node: any) => node.size}
@@ -299,15 +471,18 @@ export default function ResponseGraph({ isOpen, onClose, graphData, query }: Res
               ctx.fill()
             }}
             linkColor={(link: any) => link.color}
-            linkWidth={(link: any) => Math.sqrt(link.strength || 1)}
+            linkWidth={(link: any) => Math.sqrt(link.strength || 1) * 2}
             linkDirectionalParticles={2}
             linkDirectionalParticleWidth={2}
+            linkDirectionalParticleSpeed={0.005}
             linkLabel={(link: any) => link.type}
             onNodeClick={handleNodeClick}
             onNodeHover={handleNodeHover}
-            cooldownTicks={100}
-            d3AlphaDecay={0.02}
-            d3VelocityDecay={0.3}
+            cooldownTicks={150}
+            d3AlphaDecay={0.015}
+            d3VelocityDecay={0.2}
+            warmupTicks={100}
+            enableNodeDrag={true}
             enableZoomInteraction={true}
             enablePanInteraction={true}
             backgroundColor="#ffffff"
@@ -357,6 +532,7 @@ export default function ResponseGraph({ isOpen, onClose, graphData, query }: Res
             <button
               onClick={() => setShowLegend(true)}
               className="absolute top-6 right-6 p-3 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 border border-slate-200"
+              title="Show node types legend"
             >
               <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path

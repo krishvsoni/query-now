@@ -73,8 +73,6 @@ export default function DocumentList({
       console.error('Error fetching documents:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load documents';
       setError(errorMessage);
-      
-      // Check if this is a setup issue
       if (errorMessage.includes('Database') || errorMessage.includes('setup')) {
         setSetupRequired(true);
       }
@@ -232,15 +230,12 @@ export default function DocumentList({
             <ArrowPathIcon className="h-5 w-5" />
           </button>
         </div>
-        
-        {/* User info display */}
         {user && (
           <div className="flex items-center space-x-2 mt-2">
             <UserIcon className="h-4 w-4 text-gray-400" />
             <span className="text-sm text-gray-600">{user.fullName || user.email}</span>
           </div>
         )}
-        
         <p className="text-sm text-gray-600 mt-1">
           {documents.length} document{documents.length !== 1 ? 's' : ''} uploaded
         </p>
@@ -269,7 +264,6 @@ export default function DocumentList({
                   <div className="flex-shrink-0">
                     {getStatusIcon(doc.status, doc.processingStage)}
                   </div>
-                  
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-gray-900 truncate">
@@ -281,7 +275,6 @@ export default function DocumentList({
                         </span>
                       )}
                     </div>
-                    
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-xs text-gray-600">
                         {getStatusText(doc.status, doc.processingStage)}
@@ -290,14 +283,11 @@ export default function DocumentList({
                         {formatDate(doc.uploadedAt)}
                       </span>
                     </div>
-
                     {doc.wordCount && (
                       <p className="text-xs text-gray-500 mt-1">
-                        ~{doc.wordCount.toLocaleString()} words processed
+                         {doc.wordCount.toLocaleString()} words processed
                       </p>
                     )}
-
-                    {/* Enhanced processing progress bar */}
                     {(doc.status === 'processing' || doc.status === 'uploaded') && (
                       <div className="mt-2">
                         <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
@@ -316,18 +306,14 @@ export default function DocumentList({
                         </div>
                       </div>
                     )}
-
-                    {/* Success indicator for completed documents */}
                     {doc.status === 'completed' && (
                       <div className="mt-2 flex items-center space-x-1">
                         <CheckCircleIcon className="h-3 w-3 text-green-500" />
                         <span className="text-xs text-green-600">
-                          Ready for queries • Embeddings stored • Knowledge graph built
+                          Ready for queries 
                         </span>
                       </div>
                     )}
-
-                    {/* Error state */}
                     {doc.status === 'error' && (
                       <div className="mt-2 flex items-center space-x-1">
                         <ExclamationCircleIcon className="h-3 w-3 text-red-500" />

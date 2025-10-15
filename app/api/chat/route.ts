@@ -6,6 +6,7 @@ import { searchSimilar } from '@/lib/pinecone';
 import { searchEntities, getEntityRelationships, getUserDocuments } from '@/lib/neo4j';
 import { reasoningEngine } from '@/lib/reasoning-engine';
 import { graphProcessor } from '@/lib/graph-processor';
+import { responseGraphGenerator } from '@/lib/response-graph-generator';
 import { saveChatMessage } from '@/lib/appwrite';
 
 export async function POST(request: NextRequest) {
@@ -153,24 +154,26 @@ export async function POST(request: NextRequest) {
                 let graphToSend = null;
                 
                 if (finalAnswer.length > 100) {
-                  const extractedGraph = await reasoningEngine.extractGraphFromResponse(
+                  const extractedGraph = await responseGraphGenerator.extractGraphFromResponse(
                     query,
                     finalAnswer,
-                    toolResults
+                    toolResults,
+                    user.id
                   );
                   
                   if (extractedGraph && extractedGraph.nodes && extractedGraph.nodes.length > 0) {
-                    graphToSend = {
-                      nodes: extractedGraph.nodes,
-                      edges: extractedGraph.edges || [],
-                      metadata: {
-                        entityCount: extractedGraph.nodes.length,
-                        relationshipCount: extractedGraph.edges?.length || 0,
-                        createdAt: new Date().toISOString(),
-                        scope: 'query',
-                        source: 'llm_extraction'
-                      }
-                    };
+                    const enhancedGraph = await responseGraphGenerator.enhanceGraph(
+                      extractedGraph,
+                      user.id,
+                      query
+                    );
+                    
+                    const filteredGraph = responseGraphGenerator.filterRelevantNodes(
+                      enhancedGraph,
+                      20
+                    );
+                    
+                    graphToSend = filteredGraph;
                     queryKnowledgeGraph = graphToSend;
                   }
                 }

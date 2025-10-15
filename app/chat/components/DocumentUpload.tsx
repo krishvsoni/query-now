@@ -33,9 +33,6 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
     if (acceptedFiles.length === 0) return;
 
     const file = acceptedFiles[0];
-    
-    // Remove file size restriction - allow any size
-    console.log('Starting upload for file:', file.name, 'Type:', file.type, 'Size:', file.size);
 
     setUploading(true);
     setError(null);
@@ -43,8 +40,6 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
     onUploadStart?.();
 
     try {
-      console.log('Starting upload for file:', file.name, 'Type:', file.type, 'Size:', file.size);
-      
       const formData = new FormData();
       formData.append('file', file);
 
@@ -54,13 +49,12 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
       });
 
       const result = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(result.error || `Server error: ${response.status}`);
       }
 
       if (result.success && result.document) {
-        console.log('Upload successful:', result);
         setSuccess(result.message || `Successfully uploaded "${file.name}". Processing pipeline started.`);
         onUploadComplete?.(result.document, result.user);
       } else {
@@ -68,8 +62,6 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
       }
 
     } catch (error) {
-      console.error('Upload error:', error);
-      
       let errorMessage = 'Upload failed';
       if (error instanceof Error) {
         if (error.message.includes('Authentication required') || error.message.includes('Unauthorized')) {
@@ -86,7 +78,7 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
           errorMessage = error.message;
         }
       }
-      
+
       setError(errorMessage);
     } finally {
       setUploading(false);
@@ -96,7 +88,6 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
   const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
     onDrop,
     onDragEnter: () => {
-      // Clear previous errors when user starts dragging a new file
       setError(null);
       setSuccess(null);
     },
@@ -106,7 +97,6 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
       'text/plain': ['.txt']
     },
     maxFiles: 1,
-    // Remove maxSize restriction - allow any file size
     disabled: uploading,
     onDropRejected: (rejectedFiles) => {
       const rejection = rejectedFiles[0];
@@ -151,10 +141,7 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
                   Drag & drop a document, or <span className="text-blue-600 font-medium">browse</span>
                 </p>
                 <p className="text-xs text-gray-500 mb-2">
-                  PDF, DOCX, TXT files (no size limit)
-                </p>
-                <p className="text-xs text-gray-400">
-                  Will be processed through: Appwrite → Embeddings → Pinecone → Neo4j → Redis
+                  PDF, DOCX, TXT, SQL,  (no size limit)
                 </p>
               </div>
             )}
@@ -174,9 +161,6 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
           <CheckCircleIcon className="h-5 w-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-green-700">
             <p className="font-medium">{success}</p>
-            <p className="text-xs text-green-600 mt-1">
-              Processing pipeline: Appwrite Storage → Document Parsing → AI Embeddings → Pinecone Vector DB → Neo4j Knowledge Graph → Redis Cache
-            </p>
             <p className="text-xs text-green-500 mt-1">
               You can now ask questions about this document in the chat!
             </p>

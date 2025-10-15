@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Query Now - AI-Powered Document Chat",
-  description: "Upload documents and chat with your knowledge base using AI-powered search and knowledge graphs",
+  title: "Query Now",
+  description: "Upload documents and chat with your knowledge base using AI-powered search and knowledge graphs — RAAG AS A SERVICE.",
 };
 
 export default function RootLayout({
