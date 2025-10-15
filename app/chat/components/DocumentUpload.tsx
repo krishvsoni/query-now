@@ -141,7 +141,7 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
                   Drag & drop a document, or <span className="text-blue-600 font-medium">browse</span>
                 </p>
                 <p className="text-xs text-gray-500 mb-2">
-                  PDF, DOCX, TXT, SQL,  (no size limit)
+                  PDF, DOCX, TXT  (no size limit)
                 </p>
               </div>
             )}

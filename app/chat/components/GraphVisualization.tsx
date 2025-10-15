@@ -407,7 +407,7 @@ export default function GraphVisualization({
           <select
             value={selectedRelationType}
             onChange={(e) => setSelectedRelationType(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+            className="px-3 py-2 border text-black border-gray-300 rounded-md text-sm"
           >
             <option value="">All Relations</option>
             {relationshipTypes.map(type => (
@@ -620,7 +620,7 @@ export default function GraphVisualization({
                     value={customCypher}
                     onChange={(e) => setCustomCypher(e.target.value)}
                     placeholder="MATCH (n:Entity) RETURN n LIMIT 25"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono mb-2 h-32"
+                    className="w-full px-3 py-2 text-black border border-gray-300 rounded-md text-sm font-mono mb-2 h-32"
                   />
                   <button
                     onClick={executeCypherQuery}

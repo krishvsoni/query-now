@@ -6,6 +6,7 @@ import { LightBulbIcon, CogIcon, EyeIcon, CheckCircleIcon } from '@heroicons/rea
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ResponseGraph from './ResponseGraph';
+import ProfileDropdown from './ProfileDropdown';
 
 interface Message {
   id: string;
@@ -370,6 +371,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
               />
               <span className="text-gray-700">Show Reasoning</span>
             </label>
+            <ProfileDropdown />
           </div>
         </div>
       </div>
