@@ -67,6 +67,7 @@ interface GraphLink {
   type: string;
   strength: number;
   color: string;
+  properties?: any;
 }
 
 interface ProcessedGraphData {
