@@ -227,7 +227,6 @@ export async function updateDocumentMetadata(
   };
 }
 
-// Chat History Functions
 const CHAT_DATABASE_ID = process.env.APPWRITE_DATABASE_ID;
 const CHAT_COLLECTION_ID = process.env.APPWRITE_CHAT_COLLECTION_ID;
 
@@ -244,6 +243,21 @@ export async function saveChatMessage(
   }
 ) {
   try {
+    const metadataToSave = { ...metadata };
+    if (metadataToSave.knowledgeGraph) {
+      const kgString = JSON.stringify(metadataToSave.knowledgeGraph);
+      if (kgString.length > 30000) {
+        console.log(`[Appwrite] Knowledge graph too large (${kgString.length} chars), skipping save`);
+        delete metadataToSave.knowledgeGraph;
+      }
+    }
+    const metadataString = JSON.stringify(metadataToSave);
+    if (metadataString.length > 65000) {
+      console.warn(`[Appwrite] Metadata too large (${metadataString.length} chars), saving without sources and knowledge graph`);
+      delete metadataToSave.sources;
+      delete metadataToSave.knowledgeGraph;
+      delete metadataToSave.reasoningChain;
+    }
     const chatMessage = await databases.createDocument(
       CHAT_DATABASE_ID,
       CHAT_COLLECTION_ID,
@@ -253,7 +267,7 @@ export async function saveChatMessage(
         sessionId,
         role,
         content,
-        metadata: JSON.stringify(metadata || {}),
+        metadata: JSON.stringify(metadataToSave),
         timestamp: new Date().toISOString(),
         createdAt: new Date().toISOString()
       },
@@ -262,12 +276,10 @@ export async function saveChatMessage(
         `write("user:${userId}")`
       ]
     );
-    
     console.log(`[Appwrite] Chat message saved: ${chatMessage.$id}`);
     return chatMessage;
   } catch (error) {
     console.error('[Appwrite] Error saving chat message:', error);
-    // Don't throw - chat history is not critical
     return null;
   }
 }
@@ -283,17 +295,14 @@ export async function getChatHistory(
       Query.orderDesc('createdAt'),
       Query.limit(limit)
     ];
-    
     if (sessionId) {
       queries.push(Query.equal('sessionId', sessionId));
     }
-    
     const response = await databases.listDocuments(
       CHAT_DATABASE_ID,
       CHAT_COLLECTION_ID,
       queries
     );
-    
     return response.documents.map(doc => ({
       id: doc.$id,
       userId: doc.userId,
@@ -321,8 +330,6 @@ export async function getChatSessions(userId: string) {
         Query.limit(100)
       ]
     );
-    
-    // Group by session
     const sessions = new Map<string, any>();
     response.documents.forEach(doc => {
       const sessionId = doc.sessionId;
@@ -342,7 +349,6 @@ export async function getChatSessions(userId: string) {
         }
       }
     });
-    
     return Array.from(sessions.values()).sort((a, b) => 
       new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );

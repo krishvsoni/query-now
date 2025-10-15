@@ -333,23 +333,31 @@ export class GraphProcessor {
     const session = await getSession();
     try {
       let result;
+      
       if (relevantEntityIds.length > 0) {
         result = await session.run(
           `
           MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
           WHERE e.id IN $entityIds AND (e.isDuplicate IS NULL OR e.isDuplicate <> true)
-          OPTIONAL MATCH (e)-[r]-(connected:Entity)
-          WHERE connected.isDuplicate IS NULL OR connected.isDuplicate <> true
-          RETURN e, collect(distinct {rel: r, node: connected, relType: type(r)}) as connections
+          OPTIONAL MATCH path = (e)-[r*1..2]-(connected:Entity)
+          WHERE (connected.isDuplicate IS NULL OR connected.isDuplicate <> true)
+          AND (connected.id IN $entityIds OR length(path) = 1)
+          WITH e, collect(distinct {
+            rel: relationships(path)[0], 
+            node: connected, 
+            relType: type(relationships(path)[0])
+          }) as connections
+          RETURN e, connections
           `,
           { userId, entityIds: relevantEntityIds }
         );
       } else {
-        console.log('[Graph Processor] No entity IDs provided, searching by query keywords:', query);
         const keywords = query.toLowerCase()
           .split(/\s+/)
           .filter(word => word.length > 3)
+          .filter(word => !['what', 'where', 'when', 'which', 'who', 'how', 'does', 'about', 'the', 'this', 'that', 'with', 'from', 'have', 'been'].includes(word))
           .slice(0, 5);
+        
         result = await session.run(
           `
           MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
@@ -358,23 +366,36 @@ export class GraphProcessor {
             any(keyword IN $keywords WHERE toLower(e.name) CONTAINS keyword)
             OR any(keyword IN $keywords WHERE toLower(e.description) CONTAINS keyword)
           )
-          WITH e LIMIT 15
+          WITH e LIMIT 10
           OPTIONAL MATCH (e)-[r]-(connected:Entity)
-          WHERE connected.isDuplicate IS NULL OR connected.isDuplicate <> true
-          RETURN e, collect(distinct {rel: r, node: connected, relType: type(r)}) as connections
+          WHERE (connected.isDuplicate IS NULL OR connected.isDuplicate <> true)
+          AND (
+            any(keyword IN $keywords WHERE toLower(connected.name) CONTAINS keyword)
+            OR any(keyword IN $keywords WHERE toLower(connected.description) CONTAINS keyword)
+            OR id(e) < id(connected)
+          )
+          WITH e, collect(distinct {rel: r, node: connected, relType: type(r)}) as connections
+          LIMIT 15
+          RETURN e, connections
           `,
           { userId, keywords }
         );
       }
+      
       console.log(`[Graph Processor] Query graph: Found ${result.records.length} entities with connections`);
+      
       const nodes: any[] = [];
       const edges: any[] = [];
       const seenNodes = new Set<string>();
       const seenEdges = new Set<string>();
+      
       result.records.forEach(record => {
         const entity = record.get('e');
-        const connections = record.get('connections');
+        const connections = record.get('connections') || [];
         const props = entity.properties;
+        
+        console.log('[Graph Processor] Processing entity:', props.name, '(', props.type, ')');
+        
         if (!seenNodes.has(props.id)) {
           nodes.push({
             id: props.id,
@@ -388,10 +409,12 @@ export class GraphProcessor {
           });
           seenNodes.add(props.id);
         }
+        
         connections.forEach((conn: any) => {
           if (conn.node && conn.rel) {
             const connProps = conn.node.properties;
             const connectedId = connProps.id;
+            
             if (!seenNodes.has(connectedId)) {
               nodes.push({
                 id: connectedId,
@@ -405,21 +428,32 @@ export class GraphProcessor {
               });
               seenNodes.add(connectedId);
             }
+            
             const edgeKey = `${props.id}-${conn.relType}-${connectedId}`;
-            if (!seenEdges.has(edgeKey)) {
+            const reverseEdgeKey = `${connectedId}-${conn.relType}-${props.id}`;
+            
+            if (!seenEdges.has(edgeKey) && !seenEdges.has(reverseEdgeKey)) {
+              const relProps = conn.rel.properties || {};
+              const confidence = relProps.confidence !== undefined ? relProps.confidence : 0.8;
+              
               edges.push({
                 id: edgeKey,
                 source: props.id,
                 target: connectedId,
                 type: conn.relType,
-                properties: conn.rel.properties || {}
+                properties: {
+                  ...relProps,
+                  confidence: confidence
+                }
               });
               seenEdges.add(edgeKey);
             }
           }
         });
       });
+      
       console.log(`[Graph Processor] Query KG built: ${nodes.length} nodes, ${edges.length} edges`);
+      
       return {
         nodes,
         edges,

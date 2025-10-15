@@ -6,11 +6,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!
 });
 
-/**
- * Multi-step Reasoning Engine with Iterative Refinement
- * Streams reasoning chains and thoughts
- */
-
 export interface ReasoningStep {
   id: string;
   type: 'thought' | 'action' | 'observation' | 'conclusion';
@@ -47,9 +42,6 @@ export class ReasoningEngine {
     this.queryPlanner = new QueryPlanner();
   }
   
-  /**
-   * Execute reasoning with streaming
-   */
   async *streamReasoning(
     context: QueryContext,
     onProgress?: (chunk: StreamChunk) => void
@@ -59,7 +51,6 @@ export class ReasoningEngine {
     let iterationCount = 0;
     const toolsUsed = new Set<string>();
     
-    // Step 1: Initial thought - Understand the query
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'thought',
@@ -67,7 +58,6 @@ export class ReasoningEngine {
       timestamp: Date.now()
     }, steps, onProgress);
     
-    // Step 2: Plan the approach
     const plan = await this.queryPlanner.planQuery(context);
     
     yield* this.emitReasoningStep({
@@ -78,7 +68,6 @@ export class ReasoningEngine {
       metadata: { plan }
     }, steps, onProgress);
     
-    // Step 3: Execute tools
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'action',
@@ -88,7 +77,6 @@ export class ReasoningEngine {
     
     const toolResults = await this.queryPlanner.executePlan(plan, context);
     
-    // Emit tool execution results
     for (const result of toolResults) {
       toolsUsed.add(result.tool);
       
@@ -112,7 +100,6 @@ export class ReasoningEngine {
       }, steps, onProgress);
     }
     
-    // Step 4: Synthesize initial answer
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'thought',
@@ -123,7 +110,6 @@ export class ReasoningEngine {
     let currentAnswer = await this.synthesizeAnswer(context.query, toolResults, context);
     let currentConfidence = this.calculateOverallConfidence(toolResults);
     
-    // Step 5: Iterative refinement
     while (iterationCount < this.maxIterations && currentConfidence < 0.85) {
       iterationCount++;
       
@@ -135,7 +121,6 @@ export class ReasoningEngine {
         confidence: currentConfidence
       }, steps, onProgress);
       
-      // Identify gaps and refine
       const refinementNeeded = await this.identifyRefinementNeeds(
         context.query,
         currentAnswer,
@@ -150,7 +135,6 @@ export class ReasoningEngine {
           timestamp: Date.now()
         }, steps, onProgress);
         
-        // Execute additional searches if needed
         if (refinementNeeded.additionalQuery) {
           yield* this.emitReasoningStep({
             id: `step-${steps.length + 1}`,
@@ -179,7 +163,6 @@ export class ReasoningEngine {
           };
         }
         
-        // Re-synthesize with new information
         currentAnswer = await this.synthesizeAnswer(context.query, toolResults, context);
         currentConfidence = this.calculateOverallConfidence(toolResults);
       } else {
@@ -187,7 +170,6 @@ export class ReasoningEngine {
       }
     }
     
-    // Step 6: Final conclusion
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'conclusion',
@@ -196,7 +178,6 @@ export class ReasoningEngine {
       confidence: currentConfidence
     }, steps, onProgress);
     
-    // Cache reasoning chain
     const reasoningChain: ReasoningChain = {
       query: context.query,
       steps,
@@ -212,22 +193,18 @@ export class ReasoningEngine {
     
     await this.cacheReasoningChain(context.userId, context.query, reasoningChain);
     
-    // Emit final answer
     yield {
       type: 'final_answer',
       data: {
         answer: currentAnswer,
         confidence: currentConfidence,
         reasoning: reasoningChain,
-        toolResults // Include tool results for source extraction
+        toolResults
       },
       timestamp: Date.now()
     };
   }
   
-  /**
-   * Helper to emit reasoning steps
-   */
   private async *emitReasoningStep(
     step: ReasoningStep,
     steps: ReasoningStep[],
@@ -248,15 +225,11 @@ export class ReasoningEngine {
     yield chunk;
   }
   
-  /**
-   * Synthesize answer from tool results
-   */
   private async synthesizeAnswer(
     query: string,
     toolResults: ToolResult[],
     context: QueryContext
   ): Promise<string> {
-    // Prepare context from tool results
     const contextParts: string[] = [];
     
     for (const result of toolResults) {
@@ -295,7 +268,6 @@ export class ReasoningEngine {
       return "I couldn't find relevant information to answer your question based on your documents.";
     }
     
-    // Use LLM to synthesize answer
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -316,9 +288,6 @@ export class ReasoningEngine {
     return response.choices[0].message.content || 'Unable to generate answer.';
   }
   
-  /**
-   * Identify if refinement is needed
-   */
   private async identifyRefinementNeeds(
     query: string,
     currentAnswer: string,
@@ -355,9 +324,6 @@ export class ReasoningEngine {
     return evaluation;
   }
   
-  /**
-   * Calculate overall confidence from tool results
-   */
   private calculateOverallConfidence(toolResults: ToolResult[]): number {
     if (toolResults.length === 0) return 0;
     
@@ -365,9 +331,6 @@ export class ReasoningEngine {
     return totalConfidence / toolResults.length;
   }
   
-  /**
-   * Cache reasoning chain
-   */
   private async cacheReasoningChain(
     userId: string,
     query: string,
@@ -378,9 +341,6 @@ export class ReasoningEngine {
     await pipeline.cacheGraphData(userId, cacheKey, chain, 3600);
   }
   
-  /**
-   * Get cached reasoning chain
-   */
   async getCachedReasoning(userId: string, query: string): Promise<ReasoningChain | null> {
     const cacheKey = `reasoning:${userId}:${Buffer.from(query).toString('base64').slice(0, 50)}`;
     console.log(`[Reasoning Engine] Checking cache for query: "${query.substring(0, 50)}..."`);
@@ -393,9 +353,6 @@ export class ReasoningEngine {
     return cached;
   }
   
-  /**
-   * Non-streaming version for simple use cases
-   */
   async reason(context: QueryContext): Promise<ReasoningChain> {
     const chunks: StreamChunk[] = [];
     
@@ -409,6 +366,77 @@ export class ReasoningEngine {
     }
     
     throw new Error('Reasoning failed to produce a final answer');
+  }
+
+  async extractGraphFromResponse(
+    query: string,
+    response: string,
+    toolResults: ToolResult[]
+  ): Promise<{ nodes: any[]; edges: any[] } | null> {
+    try {
+      console.log('[Response Graph Extractor] Analyzing response for graph data...');
+      
+      const graphPrompt = `Analyze this query and response to extract a knowledge graph.
+
+Query: ${query}
+
+Response: ${response}
+
+Extract entities (nodes) and relationships (edges) from the response.
+Focus on:
+- Concrete entities mentioned (systems, models, metrics, chunk sizes, scores)
+- Numerical values and their associations
+- Comparison relationships
+- Performance metrics
+
+Return a JSON object with this structure:
+{
+  "nodes": [
+    {
+      "id": "unique_id",
+      "label": "Display Name",
+      "type": "CONCEPT|METRIC|VALUE|SYSTEM",
+      "properties": { "key": "value" }
+    }
+  ],
+  "edges": [
+    {
+      "source": "node_id",
+      "target": "node_id", 
+      "label": "HAS_SCORE|COMPARES_TO|HAS_METRIC|PERFORMS_AT",
+      "properties": { "value": "optional" }
+    }
+  ]
+}
+
+IMPORTANT:
+- Create nodes for each distinct concept, metric, or value mentioned
+- Create edges showing relationships and comparisons
+- Include numerical values as properties
+- Use clear, descriptive labels
+- If no clear graph structure exists, return {"nodes": [], "edges": []}`;
+
+      const result = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: graphPrompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.3
+      });
+
+      const graphData = JSON.parse(result.choices[0].message.content || '{"nodes":[],"edges":[]}');
+      
+      if (graphData.nodes && graphData.nodes.length > 0) {
+        console.log(`[Response Graph Extractor] ✓ Extracted ${graphData.nodes.length} nodes, ${graphData.edges?.length || 0} edges`);
+        return graphData;
+      }
+      
+      console.log('[Response Graph Extractor] No graph structure found in response');
+      return null;
+      
+    } catch (error) {
+      console.error('[Response Graph Extractor] Error:', error);
+      return null;
+    }
   }
 }
 

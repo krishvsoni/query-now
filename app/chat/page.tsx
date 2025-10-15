@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Tabs from './components/Tabs';
 import ChatInterface from './components/ChatInterface';
 import DocumentUpload from './components/DocumentUpload';
@@ -16,6 +17,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function ChatPage() {
+  const router = useRouter();
   const [refreshDocuments, setRefreshDocuments] = useState(0);
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [showGraph, setShowGraph] = useState(false);
@@ -84,34 +86,6 @@ export default function ChatPage() {
                   onUploadStart={() => {}}
                 />
               </div>
-
-              <DocumentList 
-                onDocumentSelect={handleDocumentSelect}
-                selectedDocuments={selectedDocuments}
-                refreshTrigger={refreshDocuments}
-              />
-
-              <div className="bg-white rounded-lg p-4 border">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">Quick Actions</h3>
-                <div className="space-y-2">
-                  <button
-                    onClick={() => handleShowGraph('')}
-                    className="w-full flex items-center space-x-2 text-left p-2 text-sm text-gray-700 hover:bg-gray-50 rounded"
-                  >
-                    <ShareIcon className="h-4 w-4" />
-                    <span>View Knowledge Graph</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => setSelectedDocuments([])}
-                    className="w-full flex items-center space-x-2 text-left p-2 text-sm text-gray-700 hover:bg-gray-50 rounded"
-                  >
-                    <DocumentTextIcon className="h-4 w-4" />
-                    <span>Clear Selection ({selectedDocuments.length})</span>
-                  </button>
-                </div>
-              </div>
-
               <div className="bg-white rounded-lg p-4 border">
                 <h3 className="text-sm font-medium text-gray-900 mb-3">Session Stats</h3>
                 <div className="space-y-2 text-sm text-gray-600">
@@ -120,11 +94,18 @@ export default function ChatPage() {
                     <span>{selectedDocuments.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Graph Opened:</span>
-                    <span>{showGraph ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
               </div>
+              <DocumentList 
+                onDocumentSelect={handleDocumentSelect}
+                selectedDocuments={selectedDocuments}
+                refreshTrigger={refreshDocuments}
+              />
+
+ 
+
+
             </div>
           </div>
         </div>

@@ -145,6 +145,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
       const reasoningSteps: ReasoningStep[] = [];
       let knowledgeGraph: any = null;
       let partialData = '';
+      let partialGraphData = ''; // Buffer for large graph data
 
       try {
         while (true) {
@@ -152,7 +153,11 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
           if (done) break;
 
           const chunk = new TextDecoder().decode(value);
-          const lines = chunk.split('\n');
+          partialData += chunk; // Accumulate data
+          const lines = partialData.split('\n');
+          
+          // Keep the last incomplete line in the buffer
+          partialData = lines.pop() || '';
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
@@ -161,6 +166,29 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                 break;
               }
               if (!data) continue;
+              
+              // Handle knowledge_graph specially as it might be large
+              if (data.includes('"type":"knowledge_graph"') || data.includes('"type": "knowledge_graph"')) {
+                partialGraphData += data;
+                
+                // Try to parse when we have complete JSON
+                try {
+                  const parsed = JSON.parse(partialGraphData);
+                  if (parsed.type === 'knowledge_graph' && parsed.graph) {
+                    console.log('[ChatInterface] ✓ Successfully parsed knowledge graph');
+                    console.log('[ChatInterface] Node count:', parsed.graph?.nodes?.length);
+                    console.log('[ChatInterface] Edge count:', parsed.graph?.edges?.length);
+                    knowledgeGraph = parsed.graph;
+                    setCurrentKnowledgeGraph(knowledgeGraph);
+                    partialGraphData = ''; // Clear buffer
+                  }
+                } catch (e) {
+                  // Still accumulating, continue
+                  console.log('[ChatInterface] Accumulating graph data... (size:', partialGraphData.length, 'bytes)');
+                }
+                continue;
+              }
+              
               try {
                 const parsed = JSON.parse(data);
                 if (parsed.type === 'thinking') {
@@ -179,16 +207,26 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                   setThinkingStatus(`Executing ${parsed.tool.tool}...`);
                 } else if (parsed.type === 'refinement') {
                   setThinkingStatus('Refining answer...');
-                } else if (parsed.type === 'knowledge_graph') {
-                  knowledgeGraph = parsed.graph;
-                  setCurrentKnowledgeGraph(knowledgeGraph);
                 }
               } catch (parseError) {
-                if (data.includes('"type":"knowledge_graph"') || data.includes('type": "knowledge_graph"')) {
-                  continue;
-                }
+                // Silently handle partial JSON
+                console.log('[ChatInterface] Parse error (partial data):', parseError);
               }
             }
+          }
+        }
+        
+        // Try final parse of any remaining graph data
+        if (partialGraphData) {
+          try {
+            const parsed = JSON.parse(partialGraphData);
+            if (parsed.type === 'knowledge_graph' && parsed.graph) {
+              console.log('[ChatInterface] ✓ Final parse of knowledge graph successful');
+              knowledgeGraph = parsed.graph;
+              setCurrentKnowledgeGraph(knowledgeGraph);
+            }
+          } catch (e) {
+            console.error('[ChatInterface] Failed to parse final graph data:', e);
           }
         }
       } finally {
@@ -204,6 +242,12 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
         knowledgeGraph,
         timestamp: Date.now()
       };
+
+      console.log('[ChatInterface] Final message knowledge graph:', {
+        hasGraph: !!knowledgeGraph,
+        nodeCount: knowledgeGraph?.nodes?.length || 0,
+        edgeCount: knowledgeGraph?.edges?.length || 0
+      });
 
       setMessages(prev => [...prev, finalMessage]);
       setStreamingMessage('');
@@ -330,6 +374,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
             </p>
           </div>
           <div className="flex items-center space-x-4">
+           
             <label className="flex items-center space-x-2 text-sm">
               <input
                 type="checkbox"
@@ -384,6 +429,19 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                   : 'bg-gray-100 text-gray-900'
               }`}
             >
+              {/* Knowledge Graph Indicator Badge */}
+              {message.role === 'assistant' && 
+               message.knowledgeGraph && 
+               message.knowledgeGraph.nodes && 
+               message.knowledgeGraph.nodes.length > 0 && (
+                <div className="mb-2 inline-flex items-center gap-1 text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full font-medium">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                  Graph Available
+                </div>
+              )}
+              
               <div className="whitespace-pre-wrap">{message.content}</div>
               
               {message.role === 'assistant' && showReasoning && message.reasoningChain && 
@@ -392,47 +450,49 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
               {message.role === 'assistant' && !showReasoning && renderSources(message.sources || [])}
               
               {message.role === 'assistant' && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {message.knowledgeGraph && (
-                    (() => {
-                      const hasFullGraph = message.knowledgeGraph.nodes && 
-                                          Array.isArray(message.knowledgeGraph.nodes) && 
-                                          message.knowledgeGraph.nodes.length > 0;
-                      if (hasFullGraph) {
-                        return (
-                          <button
-                            onClick={() => {
-                              const userMessageIndex = messages.findIndex(m => m.id === message.id) - 1;
-                              const userQuery = userMessageIndex >= 0 ? messages[userMessageIndex]?.content : '';
-                              setResponseGraphData(message.knowledgeGraph);
-                              setResponseGraphQuery(userQuery || 'Query Response');
-                              setShowResponseGraph(true);
-                            }}
-                            className="text-xs px-2 py-1 bg-purple-50 text-purple-600 hover:bg-purple-100 rounded-md font-medium transition-colors"
-                          >
-                            Response Graph ({message.knowledgeGraph.nodes.length} nodes, {message.knowledgeGraph.edges?.length || 0} edges)
-                          </button>
-                        );
-                      } else {
-                        if (message.sources && message.sources.length > 0) {
-                          return (
-                            <button
-                              onClick={() => onShowGraph?.('', 'central')}
-                              className="text-xs px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md font-medium transition-colors"
-                            >
-                              Central Knowledge Graph
-                            </button>
-                          );
-                        }
-                      }
-                      return null;
-                    })()
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {/* Knowledge Graph Button - Shows when graph is available */}
+                  {message.knowledgeGraph && 
+                   message.knowledgeGraph.nodes && 
+                   Array.isArray(message.knowledgeGraph.nodes) && 
+                   message.knowledgeGraph.nodes.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const userMessageIndex = messages.findIndex(m => m.id === message.id) - 1;
+                        const userQuery = userMessageIndex >= 0 ? messages[userMessageIndex]?.content : '';
+                        setResponseGraphData(message.knowledgeGraph);
+                        setResponseGraphQuery(userQuery || 'Query Response');
+                        setShowResponseGraph(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 rounded-lg font-medium transition-all shadow-sm hover:shadow-md"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                      View Knowledge Graph ({message.knowledgeGraph.nodes.length} nodes)
+                    </button>
                   )}
+                  
+                  {/* Show sources button when reasoning is hidden */}
+                  {showReasoning && message.sources && message.sources.length > 0 && (
+                    <button
+                      onClick={() => setShowReasoning(false)}
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+                    >
+                      <DocumentTextIcon className="w-4 h-4" />
+                      Show Sources ({message.sources.length})
+                    </button>
+                  )}
+                  
+                  {/* Central Knowledge Graph fallback */}
                   {!message.knowledgeGraph && message.sources && message.sources.length > 0 && (
                     <button
                       onClick={() => onShowGraph?.('', 'central')}
-                      className="text-xs px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md font-medium transition-colors"
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg font-medium transition-colors"
                     >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                      </svg>
                       Central Knowledge Graph
                     </button>
                   )}

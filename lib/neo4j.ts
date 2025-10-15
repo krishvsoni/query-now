@@ -24,11 +24,8 @@ export async function createUserDocumentNode(
   metadata: any = {}
 ) {
   const session = await getSession();
-  
   try {
-
     const flatMetadata: Record<string, string | number | boolean> = {};
-    
     for (const [key, value] of Object.entries(metadata)) {
       if (value !== null && value !== undefined) {
         if (typeof value === 'object') {
@@ -38,7 +35,6 @@ export async function createUserDocumentNode(
         }
       }
     }
-    
     const result = await session.run(
       `
       MERGE (u:User {id: $userId})
@@ -70,7 +66,6 @@ export async function createUserDocumentNode(
         uploadedAt: flatMetadata.uploadedAt || new Date().toISOString()
       }
     );
-    
     return result.records[0]?.get('d');
   } finally {
     await session.close();
@@ -85,11 +80,8 @@ export async function createEntity(
   embedding?: number[]
 ) {
   const session = await getSession();
-  
   try {
     console.log(`[Neo4j] Creating entity: ${entityId} (${entityType}) with name: ${properties.name || 'N/A'}`);
-    
-    // Flatten properties to only include primitive values (strings, numbers, booleans)
     const flatProperties: Record<string, string | number | boolean> = {};
     if (properties && typeof properties === 'object') {
       for (const [key, value] of Object.entries(properties)) {
@@ -97,7 +89,6 @@ export async function createEntity(
           if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
             flatProperties[key] = value;
           } else if (typeof value === 'object') {
-            // Convert objects/arrays to JSON strings
             flatProperties[key] = JSON.stringify(value);
           } else {
             flatProperties[key] = String(value);
@@ -105,7 +96,6 @@ export async function createEntity(
         }
       }
     }
-    
     const queryParams: any = { 
       documentId, 
       entityId, 
@@ -113,24 +103,18 @@ export async function createEntity(
       name: properties.name || properties.entity || entityId,
       description: properties.description || ''
     };
-    
-    // Add flattened properties individually
     Object.entries(flatProperties).forEach(([key, value]) => {
       if (key !== 'name' && key !== 'description') {
         queryParams[`prop_${key}`] = value;
       }
     });
-    
     if (embedding) {
       queryParams.embedding = embedding;
     }
-    
-    // Build the SET clause dynamically for additional properties
     const additionalProps = Object.keys(flatProperties)
       .filter(key => key !== 'name' && key !== 'description')
       .map(key => `e.\`${key}\` = $prop_${key}`)
       .join(', ');
-    
     const result = await session.run(
       `
       MATCH (d:Document {id: $documentId})
@@ -145,13 +129,11 @@ export async function createEntity(
       `,
       queryParams
     );
-    
     if (result.records.length > 0) {
       console.log(`[Neo4j] ✓ Entity created: ${entityId}`);
     } else {
       console.warn(`[Neo4j] ⚠ Entity creation returned no records (document may not exist: ${documentId})`);
     }
-    
     return result.records[0]?.get('e');
   } catch (error) {
     console.error(`[Neo4j] ✗ Failed to create entity ${entityId}:`, error instanceof Error ? error.message : error);
@@ -168,18 +150,13 @@ export async function createRelationship(
   properties: any = {}
 ) {
   const session = await getSession();
-  
   try {
-    // Sanitize relationship type for Neo4j (only uppercase letters, numbers, underscores)
     const sanitizedType = relationshipType
       .toUpperCase()
       .replace(/[^A-Z0-9_]/g, '_')
       .replace(/_+/g, '_')
       .replace(/^_|_$/g, '') || 'RELATED_TO';
-    
     console.log(`[Neo4j] Creating relationship: ${sourceEntityId} -[${sanitizedType}]-> ${targetEntityId}`);
-    
-    // Flatten properties to only include primitive values
     const flatProperties: Record<string, string | number | boolean> = {};
     if (properties && typeof properties === 'object') {
       for (const [key, value] of Object.entries(properties)) {
@@ -194,7 +171,6 @@ export async function createRelationship(
         }
       }
     }
-    
     const result = await session.run(
       `
       MATCH (source:Entity {id: $sourceEntityId})
@@ -205,13 +181,11 @@ export async function createRelationship(
       `,
       { sourceEntityId, targetEntityId, properties: flatProperties }
     );
-    
     if (result.records.length > 0) {
       console.log(`[Neo4j] ✓ Relationship created: ${sanitizedType}`);
     } else {
       console.warn(`[Neo4j] ⚠ Relationship creation returned no records (entities may not exist)`);
     }
-    
     return result.records[0]?.get('r');
   } catch (error) {
     console.error(`[Neo4j] ✗ Failed to create relationship:`, error instanceof Error ? error.message : error);
@@ -227,31 +201,60 @@ export async function searchEntities(
   documentIds?: string[]
 ) {
   const session = await getSession();
-  
   try {
+    const keywords = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(word => word.length > 2)
+      .filter(word => !['what', 'where', 'when', 'which', 'who', 'how', 'does', 'about', 'the', 'and', 'with', 'from', 'that', 'this', 'can', 'you', 'provide'].includes(word));
+    console.log(`[Neo4j Entity Search] Searching for keywords: ${keywords.join(', ')}`);
     let cypher = `
       MATCH (u:User {id: $userId})-[:OWNS]->(d:Document)-[:CONTAINS]->(e:Entity)
-      WHERE (e.name CONTAINS $query OR 
-             e.description CONTAINS $query OR
-             e.type CONTAINS $query)
+      WHERE (e.isDuplicate IS NULL OR e.isDuplicate <> true)
     `;
-    
-    const params: any = { userId, query };
-    
+    const params: any = { userId };
     if (documentIds && documentIds.length > 0) {
       cypher += ` AND d.id IN $documentIds`;
       params.documentIds = documentIds;
     }
-    
-    cypher += ` RETURN e, d.fileName as fileName, d.id as documentId LIMIT 20`;
-    
+    if (keywords.length > 0) {
+      cypher += `
+      AND (
+        ${keywords.map((_, i) => `toLower(e.name) CONTAINS $keyword${i}`).join(' OR ')}
+        OR ${keywords.map((_, i) => `toLower(e.description) CONTAINS $keyword${i}`).join(' OR ')}
+      )
+      WITH e, d,
+        size([keyword IN $keywords WHERE toLower(e.name) CONTAINS keyword]) * 2 +
+        size([keyword IN $keywords WHERE toLower(e.description) CONTAINS keyword]) +
+        CASE WHEN any(keyword IN $keywords WHERE toLower(e.name) = keyword) THEN 20 ELSE 0 END +
+        CASE WHEN size(split(toLower(e.name), ' ')) <= 2 THEN 3 ELSE 0 END
+        as relevance
+      WHERE relevance > 0
+      `;
+      keywords.forEach((keyword, i) => {
+        params[`keyword${i}`] = keyword.toLowerCase();
+      });
+      params.keywords = keywords;
+      cypher += `
+      RETURN e, d.fileName as fileName, d.id as documentId, relevance
+      ORDER BY relevance DESC, e.name ASC
+      LIMIT 15
+      `;
+    } else {
+      cypher += ` RETURN e, d.fileName as fileName, d.id as documentId, 1 as relevance LIMIT 15`;
+    }
     const result = await session.run(cypher, params);
-    
-    return result.records.map(record => ({
+    const entities = result.records.map(record => ({
       entity: record.get('e').properties,
       fileName: record.get('fileName'),
-      documentId: record.get('documentId')
+      documentId: record.get('documentId'),
+      relevance: record.get('relevance')?.toNumber() || 1
     }));
+    console.log(`[Neo4j Entity Search] Found ${entities.length} entities (sorted by relevance)`);
+    if (entities.length > 0) {
+      console.log('[Neo4j Entity Search] Top entities:', entities.slice(0, 5).map(e => `${e.entity.name} (relevance: ${e.relevance})`).join(', '));
+    }
+    return entities;
   } finally {
     await session.close();
   }
@@ -259,16 +262,12 @@ export async function searchEntities(
 
 export async function getEntityRelationships(entityId: string, depth: number = 1) {
   const session = await getSession();
-  
   try {
-    // Construct the query with depth as a literal value instead of parameter
     const query = `
       MATCH (e:Entity {id: $entityId})-[r*1..${depth}]-(related:Entity)
       RETURN e, r, related
     `;
-    
     const result = await session.run(query, { entityId });
-    
     return result.records.map(record => ({
       source: record.get('e').properties,
       relationships: record.get('r'),
@@ -281,7 +280,6 @@ export async function getEntityRelationships(entityId: string, depth: number = 1
 
 export async function getUserDocuments(userId: string) {
   const session = await getSession();
-  
   try {
     const result = await session.run(
       `
@@ -291,7 +289,6 @@ export async function getUserDocuments(userId: string) {
       `,
       { userId }
     );
-    
     return result.records.map(record => record.get('d').properties);
   } finally {
     await session.close();
@@ -305,7 +302,6 @@ export async function updateDocumentStatus(
   additionalData?: Record<string, any>
 ) {
   const session = await getSession();
-  
   try {
     const updateFields = {
       documentId,
@@ -316,7 +312,6 @@ export async function updateDocumentStatus(
       pageCount: additionalData?.pageCount || null,
       ...additionalData
     };
-
     const result = await session.run(
       `
       MATCH (d:Document {id: $documentId})
@@ -329,7 +324,6 @@ export async function updateDocumentStatus(
       `,
       updateFields
     );
-    
     return result.records[0]?.get('d').properties;
   } finally {
     await session.close();
@@ -338,7 +332,6 @@ export async function updateDocumentStatus(
 
 export async function deleteUserDocument(userId: string, documentId: string) {
   const session = await getSession();
-  
   try {
     await session.run(
       `
@@ -347,31 +340,23 @@ export async function deleteUserDocument(userId: string, documentId: string) {
       `,
       { userId, documentId }
     );
-    
     return true;
   } finally {
     await session.close();
   }
 }
 
-/**
- * Execute custom Cypher query with parameters
- */
 export async function executeCypherQuery(
   query: string,
   parameters: Record<string, any> = {}
 ): Promise<any[]> {
   const session = await getSession();
-  
   try {
-    // Strip markdown code blocks if present
     let cleanQuery = query.trim();
     if (cleanQuery.startsWith('```cypher') || cleanQuery.startsWith('```')) {
       cleanQuery = cleanQuery.replace(/^```(?:cypher)?\n?/i, '').replace(/\n?```\s*$/i, '');
     }
-    
     console.log('[Neo4j] Executing Cypher query:', cleanQuery.substring(0, 100) + '...');
-    
     const result = await session.run(cleanQuery, parameters);
     return result.records.map(record => {
       const obj: Record<string, any> = {};
@@ -385,9 +370,6 @@ export async function executeCypherQuery(
   }
 }
 
-/**
- * Find shortest path between two entities
- */
 export async function findPathBetweenEntities(
   userId: string,
   entity1Name: string,
@@ -395,10 +377,7 @@ export async function findPathBetweenEntities(
   maxDepth: number = 5
 ): Promise<any[]> {
   const session = await getSession();
-  
   try {
-    // Neo4j shortestPath doesn't support variable maxDepth as parameter
-    // We need to use it as a literal in the query
     const result = await session.run(
       `
       MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e1:Entity)
@@ -414,11 +393,9 @@ export async function findPathBetweenEntities(
       `,
       { userId, entity1: entity1Name, entity2: entity2Name }
     );
-    
     return result.records.map(record => {
       const path = record.get('path');
       const pathLength = record.get('pathLength').toNumber();
-      
       return {
         length: pathLength,
         nodes: path.segments.map((seg: any) => seg.start.properties),
@@ -433,9 +410,6 @@ export async function findPathBetweenEntities(
   }
 }
 
-/**
- * Advanced graph traversal with filtering
- */
 export async function traverseGraph(
   userId: string,
   startEntityIds: string[],
@@ -451,7 +425,6 @@ export async function traverseGraph(
   paths: any[];
 }> {
   const session = await getSession();
-  
   try {
     let cypher = `
       MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(start:Entity)
@@ -459,39 +432,30 @@ export async function traverseGraph(
       MATCH path = (start)-[r*1..$depth]-(connected:Entity)
       WHERE NOT connected.isDuplicate = true
     `;
-    
     if (filters?.entityTypes && filters.entityTypes.length > 0) {
       cypher += ` AND connected.type IN $entityTypes`;
     }
-    
     if (filters?.relationshipTypes && filters.relationshipTypes.length > 0) {
       cypher += ` AND ALL(rel IN r WHERE type(rel) IN $relationshipTypes)`;
     }
-    
     cypher += `
       RETURN start, connected, r, path
       LIMIT 100
     `;
-    
     const params: any = { userId, startEntityIds, depth };
     if (filters?.entityTypes) params.entityTypes = filters.entityTypes;
     if (filters?.relationshipTypes) params.relationshipTypes = filters.relationshipTypes;
-    
     const result = await session.run(cypher, params);
-    
     const entities = new Map<string, any>();
     const relationships: any[] = [];
     const paths: any[] = [];
-    
     result.records.forEach(record => {
       const start = record.get('start');
       const connected = record.get('connected');
       const rels = record.get('r');
       const path = record.get('path');
-      
       entities.set(start.properties.id, start.properties);
       entities.set(connected.properties.id, connected.properties);
-      
       rels.forEach((rel: any) => {
         relationships.push({
           type: rel.type,
@@ -500,14 +464,12 @@ export async function traverseGraph(
           end: rel.end
         });
       });
-      
       paths.push({
         length: path.length,
         nodes: path.segments.map((seg: any) => seg.start.properties.id),
         edges: path.segments.map((seg: any) => seg.relationship.type)
       });
     });
-    
     return {
       entities: Array.from(entities.values()),
       relationships,
@@ -518,9 +480,6 @@ export async function traverseGraph(
   }
 }
 
-/**
- * Get entity neighborhood (connected entities within N hops)
- */
 export async function getEntityNeighborhood(
   entityId: string,
   radius: number = 2
@@ -533,9 +492,7 @@ export async function getEntityNeighborhood(
   }>;
 }> {
   const session = await getSession();
-  
   try {
-    // Construct query with radius as a literal value
     const query = `
       MATCH (center:Entity {id: $entityId})
       WHERE NOT center.isDuplicate = true
@@ -548,13 +505,10 @@ export async function getEntityNeighborhood(
                pathNodes: [n IN nodes(path) | n.name]
              }) as neighbors
     `;
-    
     const result = await session.run(query, { entityId });
-    
     if (result.records.length === 0) {
       throw new Error('Entity not found');
     }
-    
     const record = result.records[0];
     const center = record.get('center').properties;
     const neighbors = record.get('neighbors')
@@ -564,16 +518,12 @@ export async function getEntityNeighborhood(
         distance: n.distance?.toNumber() || 0,
         path: n.pathNodes || []
       }));
-    
     return { center, neighbors };
   } finally {
     await session.close();
   }
 }
 
-/**
- * Find most connected entities (hubs)
- */
 export async function findGraphHubs(
   userId: string,
   limit: number = 10
@@ -584,7 +534,6 @@ export async function findGraphHubs(
   outgoingCount: number;
 }>> {
   const session = await getSession();
-  
   try {
     const result = await session.run(
       `
@@ -605,7 +554,6 @@ export async function findGraphHubs(
       `,
       { userId, limit }
     );
-    
     return result.records.map(record => ({
       entity: record.get('e').properties,
       connectionCount: record.get('total').toNumber(),
@@ -617,9 +565,6 @@ export async function findGraphHubs(
   }
 }
 
-/**
- * Detect communities/clusters in the graph
- */
 export async function detectCommunities(
   userId: string
 ): Promise<Array<{
@@ -628,9 +573,7 @@ export async function detectCommunities(
   size: number;
 }>> {
   const session = await getSession();
-  
   try {
-    // Simple community detection based on connected components
     const result = await session.run(
       `
       MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
@@ -643,19 +586,14 @@ export async function detectCommunities(
       `,
       { userId }
     );
-    
-    // Simple clustering - group entities that share connections
     const communities = new Map<string, Set<any>>();
-    
     result.records.forEach((record, idx) => {
       const entity = record.get('e').properties;
       const communityMembers = record.get('community');
-      
       const communityId = `comm-${idx}`;
       if (!communities.has(communityId)) {
         communities.set(communityId, new Set());
       }
-      
       communities.get(communityId)!.add(entity);
       communityMembers.forEach((member: any) => {
         if (member) {
@@ -663,7 +601,6 @@ export async function detectCommunities(
         }
       });
     });
-    
     return Array.from(communities.entries()).map(([id, entities], idx) => ({
       communityId: idx,
       entities: Array.from(entities),
@@ -674,9 +611,6 @@ export async function detectCommunities(
   }
 }
 
-/**
- * Calculate centrality measures for entities
- */
 export async function calculateCentrality(
   userId: string,
   entityIds?: string[]
@@ -686,17 +620,14 @@ export async function calculateCentrality(
   betweennessCentrality?: number;
 }>> {
   const session = await getSession();
-  
   try {
     let cypher = `
       MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
       WHERE NOT e.isDuplicate = true
     `;
-    
     if (entityIds && entityIds.length > 0) {
       cypher += ` AND e.id IN $entityIds`;
     }
-    
     cypher += `
       OPTIONAL MATCH (e)-[r]-(other:Entity)
       WHERE NOT other.isDuplicate = true
@@ -705,12 +636,9 @@ export async function calculateCentrality(
       ORDER BY degree DESC
       LIMIT 50
     `;
-    
     const params: any = { userId };
     if (entityIds) params.entityIds = entityIds;
-    
     const result = await session.run(cypher, params);
-    
     return result.records.map(record => ({
       entity: record.get('e').properties,
       degreeCentrality: record.get('degree').toNumber()
@@ -720,9 +648,6 @@ export async function calculateCentrality(
   }
 }
 
-/**
- * Semantic search in graph using embeddings
- */
 export async function semanticGraphSearch(
   userId: string,
   embedding: number[],
@@ -733,43 +658,32 @@ export async function semanticGraphSearch(
   similarity: number;
 }>> {
   const session = await getSession();
-  
   try {
     let cypher = `
       MATCH (u:User {id: $userId})-[:OWNS]->(:Document)-[:CONTAINS]->(e:Entity)
       WHERE NOT e.isDuplicate = true AND e.embedding IS NOT NULL
     `;
-    
     if (entityTypes && entityTypes.length > 0) {
       cypher += ` AND e.type IN $entityTypes`;
     }
-    
-    // Note: This is a simplified version. For production, use Neo4j vector index
     cypher += `
       RETURN e, e.embedding as embedding
       LIMIT 100
     `;
-    
     const params: any = { userId };
     if (entityTypes) params.entityTypes = entityTypes;
-    
     const result = await session.run(cypher, params);
-    
-    // Calculate cosine similarity in application layer
     const similarities = result.records
       .map(record => {
         const entity = record.get('e').properties;
         const entityEmbedding = record.get('embedding');
-        
         if (!entityEmbedding) return null;
-        
         const similarity = cosineSimilarity(embedding, entityEmbedding);
         return { entity, similarity };
       })
       .filter((item): item is { entity: any; similarity: number } => item !== null)
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, topK);
-    
     return similarities;
   } finally {
     await session.close();
@@ -778,29 +692,21 @@ export async function semanticGraphSearch(
 
 function cosineSimilarity(a: number[], b: number[]): number {
   if (!a || !b || a.length !== b.length) return 0;
-  
   let dotProduct = 0;
   let normA = 0;
   let normB = 0;
-  
   for (let i = 0; i < a.length; i++) {
     dotProduct += a[i] * b[i];
     normA += a[i] * a[i];
     normB += b[i] * b[i];
   }
-  
   if (normA === 0 || normB === 0) return 0;
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-/**
- * Debug function to check graph data
- */
 export async function debugGraphData(userId: string) {
   const session = await getSession();
-  
   try {
-    // Count entities
     const entityResult = await session.run(
       `
       MATCH (u:User {id: $userId})-[:OWNS]->(d:Document)-[:CONTAINS]->(e:Entity)
@@ -808,8 +714,6 @@ export async function debugGraphData(userId: string) {
       `,
       { userId }
     );
-    
-    // Count relationships
     const relResult = await session.run(
       `
       MATCH (u:User {id: $userId})-[:OWNS]->(d:Document)-[:CONTAINS]->(e1:Entity)-[r]->(e2:Entity)
@@ -817,13 +721,11 @@ export async function debugGraphData(userId: string) {
       `,
       { userId }
     );
-    
     const entityCount = entityResult.records[0]?.get('entityCount')?.toNumber() || 0;
     const types = entityResult.records[0]?.get('types') || [];
     const sampleNames = entityResult.records[0]?.get('sampleNames') || [];
     const relCount = relResult.records[0]?.get('relCount')?.toNumber() || 0;
     const relTypes = relResult.records[0]?.get('relTypes') || [];
-    
     console.log(`[Neo4j Debug] User ${userId} graph data:`, {
       entityCount,
       relationshipCount: relCount,
@@ -831,7 +733,6 @@ export async function debugGraphData(userId: string) {
       relationshipTypes: relTypes,
       sampleEntityNames: sampleNames
     });
-    
     return {
       entityCount,
       relationshipCount: relCount,
