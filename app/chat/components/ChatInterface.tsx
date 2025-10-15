@@ -384,12 +384,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
               Upload some documents and start asking questions!
             </p>
             <div className="mt-4 text-sm text-gray-500">
-              <p>Try asking things like:</p>
-              <ul className="mt-2 space-y-1">
-                <li>"• What are the main topics in my documents?"</li>
-                <li>"• How is X related to Y?"</li>
-                <li>"• Summarize the key points about..."</li>
-              </ul>
+              
             </div>
           </div>
         )}

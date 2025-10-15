@@ -1,12 +1,16 @@
 # Query Now - Agentic Graph RAG as a Service
+[check the video tutorial→](https://www.loom.com/share/0f5147ce7f0e424da87790356595d07e?sid=79d5ac6e-10b2-47eb-b687-79bbafbbc2bd)
 
 An extensible, production-grade platform that unifies knowledge from multiple sources into an intelligent retrieval system. Transform unstructured documents into queryable knowledge graphs with autonomous AI agents that dynamically orchestrate vector search, graph traversal, and logical filtering for optimal information retrieval.
 
 ---
-
+## Video Tutorial 
 **Continuous Monitoring For Safe Commits**: This project is monitored and tested by [Oggy](https://github.com/krishvsoni/oggy) for code quality and safe commits built by me.
 
----
+[See detailed architecture →](working.md)
+
+
+
 
 ## Architecture
 
