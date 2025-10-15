@@ -155,6 +155,7 @@ export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHist
               </button>
             ))}
           </div>
+          
         )}
       </div>
       <div className="p-4 border-t border-gray-200 bg-gray-50">
