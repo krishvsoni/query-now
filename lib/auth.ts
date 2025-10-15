@@ -54,9 +54,9 @@ export async function getUserDetails(throwOnUnauth: boolean = false) {
       picture: user.picture,
       permissions,
       organization,
-      isVerified: user.email_verified,
-      createdAt: user.created_at,
-      updatedAt: user.updated_at
+      isVerified: (user as any).email_verified,
+      createdAt: (user as any).created_at,
+      updatedAt: (user as any).updated_at
     };
   } catch (error: any) {
     if (error?.digest?.includes('NEXT_REDIRECT')) {

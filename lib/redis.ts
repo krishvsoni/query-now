@@ -5,7 +5,7 @@ const client = createClient({
   password: process.env.REDIS_PASSWORD,
   socket: {
     host: process.env.REDIS_HOST,
-    port: parseInt(process.env.REDIS_PORT)
+    port: parseInt(process.env.REDIS_PORT || '16675')
   }
 });
 
@@ -261,7 +261,7 @@ export async function updateDocumentStatus(documentId: string, status: string, s
     const redis = await getRedisClient();
     const statusData = {
       status,
-      stage: stage || null,
+      stage: stage || 'unknown',
       updatedAt: new Date().toISOString()
     };
     await redis.hSet(`document:${documentId}:status`, statusData);

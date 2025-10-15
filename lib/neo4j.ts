@@ -360,8 +360,8 @@ export async function executeCypherQuery(
     const result = await session.run(cleanQuery, parameters);
     return result.records.map(record => {
       const obj: Record<string, any> = {};
-      record.keys.forEach(key => {
-        obj[key] = record.get(key);
+      record.keys.forEach((key) => {
+        obj[String(key)] = record.get(key);
       });
       return obj;
     });

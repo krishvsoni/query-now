@@ -554,11 +554,11 @@ export default function GraphVisualization({
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1">Start Node</label>
+                      <label className="text-xs font-medium text-black block mb-1">Start Node</label>
                       <select
                         value={traversalStart}
                         onChange={(e) => setTraversalStart(e.target.value)}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm"
+                        className="w-full px-2 py-1.5 text-black border border-gray-300 rounded-md text-sm"
                       >
                         <option value="">Select...</option>
                         {graphData.nodes.map(node => (
@@ -567,11 +567,11 @@ export default function GraphVisualization({
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-gray-700 block mb-1">End Node</label>
+                      <label className="text-xs font-medium text-black block mb-1">End Node</label>
                       <select
                         value={traversalEnd}
                         onChange={(e) => setTraversalEnd(e.target.value)}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm"
+                        className="w-full px-2 py-1.5 border text-black border-gray-300 rounded-md text-sm"
                       >
                         <option value="">Select...</option>
                         {graphData.nodes.map(node => (

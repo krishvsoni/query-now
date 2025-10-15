@@ -143,7 +143,6 @@ export class DocumentProcessor {
   }
 
   private cleanText(text: string): string {
-    // Remove emojis and most pictographic symbols
     const withoutEmojis = text.replace(
       /[\u{1F300}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}\u{1FB00}-\u{1FBFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu,
       ''
@@ -175,10 +174,7 @@ export class DocumentProcessor {
       const chunks = chunkText(extracted.content, 1000, 200);
       console.log(`Split into ${chunks.length.toLocaleString()} chunks for processing`);
 
-      await updateDocumentStatus(documentId, 'processing', 'embedding', {
-        wordCount: extracted.metadata.wordCount,
-        pageCount: extracted.metadata.pageCount || 0
-      });
+      await updateDocumentStatus(documentId, 'processing', 'embedding');
 
       const batchSize = chunks.length > 5000 ? 3 : chunks.length > 1000 ? 5 : 10;
       const delayBetweenBatches = chunks.length > 1000 ? 100 : 0;
@@ -205,17 +201,11 @@ export class DocumentProcessor {
       const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(`Embedding complete: ${chunks.length} chunks in ${totalTime}s (${(chunks.length / parseFloat(totalTime)).toFixed(1)} chunks/s)`);
 
-      await updateDocumentStatus(documentId, 'processing', 'ontology', {
-        wordCount: extracted.metadata.wordCount,
-        pageCount: extracted.metadata.pageCount || 0
-      });
+      await updateDocumentStatus(documentId, 'processing', 'ontology');
       
       await this.extractOntology(extracted.content, documentId, userId);
 
-      await updateDocumentStatus(documentId, 'completed', 'completed', {
-        wordCount: extracted.metadata.wordCount,
-        pageCount: extracted.metadata.pageCount || 0
-      });
+      await updateDocumentStatus(documentId, 'completed', 'completed');
       
       console.log(`Document ${documentId} processing completed successfully.`);
     } catch (error) {
@@ -289,7 +279,6 @@ export class DocumentProcessor {
             embedding
           );
           
-          // Track the entity for relationship creation
           entityNameToId.set(entity.name, entityId);
           entitySuccessCount++;
         } catch (entityError) {
@@ -305,7 +294,6 @@ export class DocumentProcessor {
       
       for (const relationship of ontology.relationships) {
         try {
-          // Use the mapped entity IDs if available, otherwise fall back to name-based IDs
           const sourceId = entityNameToId.get(relationship.from) || 
             `${documentId}_entity_${relationship.from.replace(/\s+/g, '_')}`;
           const targetId = entityNameToId.get(relationship.to) || 

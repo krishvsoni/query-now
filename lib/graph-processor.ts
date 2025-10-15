@@ -105,16 +105,16 @@ export class GraphProcessor {
       `,
       { userId, name, type }
     );
-    const candidates = nameResult.records.map(r => ({
+    const candidates = nameResult.records.map((r: any) => ({
       entity: r.get('e').properties,
       embedding: r.get('embedding')
     }));
-    const similar = candidates.filter(candidate => {
+    const similar = candidates.filter((candidate: any) => {
       if (!candidate.embedding) return false;
       const similarity = this.cosineSimilarity(embedding, candidate.embedding);
       return similarity >= this.similarityThreshold;
     });
-    return similar.map(s => s.entity);
+    return similar.map((s: any) => s.entity);
   }
 
   private async mergeEntities(session: any, newEntity: Entity, existingEntity: any): Promise<Entity> {

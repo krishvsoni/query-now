@@ -48,7 +48,7 @@ export async function uploadDocument(
       sanitizedFileName = `document_${Date.now()}.txt`;
     }
 
-    const file = new File([fileBuffer], sanitizedFileName, {
+    const file = new File([new Uint8Array(fileBuffer)], sanitizedFileName, {
       type: mimeType || 'application/octet-stream'
     });
 
@@ -74,7 +74,7 @@ export async function uploadDocument(
         try {
           console.log('Retrying upload with generic filename...');
           const fallbackId = ID.unique();
-          const fallbackFile = new File([fileBuffer], `upload_${Date.now()}.bin`, {
+          const fallbackFile = new File([new Uint8Array(fileBuffer)], `upload_${Date.now()}.bin`, {
             type: 'application/octet-stream'
           });
 
@@ -227,8 +227,8 @@ export async function updateDocumentMetadata(
   };
 }
 
-const CHAT_DATABASE_ID = process.env.APPWRITE_DATABASE_ID;
-const CHAT_COLLECTION_ID = process.env.APPWRITE_CHAT_COLLECTION_ID;
+const CHAT_DATABASE_ID = process.env.APPWRITE_DATABASE_ID!;
+const CHAT_COLLECTION_ID = process.env.APPWRITE_CHAT_COLLECTION_ID!;
 
 export async function saveChatMessage(
   userId: string,

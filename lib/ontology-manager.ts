@@ -6,11 +6,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!
 });
 
-/**
- * Visual Ontology Manager with LLM-assisted modifications
- * Manages entity types, schemas, and relationships
- */
-
 export interface EntityTypeDefinition {
   name: string;
   description: string;
@@ -161,21 +156,21 @@ export class OntologyManager {
         description: 'Employment relationship',
         sourceTypes: ['Person'],
         targetTypes: ['Organization'],
-        cardinality: 'many-to-one'
+        cardinality: 'one-to-many'
       },
       {
         name: 'LOCATED_IN',
         description: 'Physical location relationship',
         sourceTypes: ['Person', 'Organization', 'Event'],
         targetTypes: ['Location'],
-        cardinality: 'many-to-one'
+        cardinality: 'one-to-many'
       },
       {
         name: 'PART_OF',
         description: 'Component or membership relationship',
         sourceTypes: ['Organization', 'Concept', 'Technology'],
         targetTypes: ['Organization', 'Concept', 'Technology'],
-        cardinality: 'many-to-one'
+        cardinality: 'one-to-many'
       },
       {
         name: 'RELATED_TO',
@@ -197,7 +192,7 @@ export class OntologyManager {
         description: 'Authorship or creation relationship',
         sourceTypes: ['Document', 'Product', 'Technology'],
         targetTypes: ['Person', 'Organization'],
-        cardinality: 'many-to-one'
+        cardinality: 'one-to-many'
       },
       {
         name: 'PARTICIPATED_IN',
@@ -213,22 +208,18 @@ export class OntologyManager {
       createdBy: 'system'
     }
   };
-  
-  /**
-   * Get current ontology for user
-   */
+
   async getOntology(userId: string): Promise<Ontology> {
     const cacheKey = `ontology:${userId}`;
     const cached = await pipeline.getCachedGraphData(userId, cacheKey);
-    
+
     if (cached) {
       return cached;
     }
-    
+
     const session = await getSession();
-    
+
     try {
-      // Check if user has custom ontology
       const result = await session.run(
         `
         MATCH (u:User {id: $userId})-[:HAS_ONTOLOGY]->(o:Ontology)
@@ -238,31 +229,27 @@ export class OntologyManager {
         `,
         { userId }
       );
-      
+
       if (result.records.length > 0) {
         const ontology = result.records[0].get('o').properties;
         const parsed = JSON.parse(ontology.data);
         await pipeline.cacheGraphData(userId, cacheKey, parsed, 7200);
         return parsed;
       }
-      
-      // Return default ontology
+
       await pipeline.cacheGraphData(userId, cacheKey, this.defaultOntology, 7200);
       return this.defaultOntology;
     } finally {
       await session.close();
     }
   }
-  
-  /**
-   * Save custom ontology for user
-   */
+
   async saveOntology(userId: string, ontology: Ontology): Promise<void> {
     const session = await getSession();
-    
+
     try {
       ontology.metadata.updatedAt = new Date().toISOString();
-      
+
       await session.run(
         `
         MATCH (u:User {id: $userId})
@@ -278,24 +265,20 @@ export class OntologyManager {
           updatedAt: ontology.metadata.updatedAt
         }
       );
-      
-      // Clear cache
+
       const cacheKey = `ontology:${userId}`;
-      await pipeline.getCachedGraphData(userId, cacheKey); // This will be replaced next time
+      await pipeline.getCachedGraphData(userId, cacheKey);
     } finally {
       await session.close();
     }
   }
-  
-  /**
-   * Add new entity type using LLM assistance
-   */
+
   async addEntityType(
     userId: string,
     description: string
   ): Promise<EntityTypeDefinition> {
     console.log(`Adding entity type: ${description}`);
-    
+
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -327,20 +310,16 @@ export class OntologyManager {
       ],
       response_format: { type: 'json_object' }
     });
-    
+
     const entityType = JSON.parse(response.choices[0].message.content || '{}');
-    
-    // Add to ontology
+
     const ontology = await this.getOntology(userId);
     ontology.entityTypes.push(entityType);
     await this.saveOntology(userId, ontology);
-    
+
     return entityType;
   }
-  
-  /**
-   * Add new relationship type using LLM assistance
-   */
+
   async addRelationshipType(
     userId: string,
     description: string,
@@ -348,10 +327,10 @@ export class OntologyManager {
     targetType?: string
   ): Promise<RelationshipTypeDefinition> {
     console.log(`Adding relationship type: ${description}`);
-    
+
     const ontology = await this.getOntology(userId);
     const entityTypes = ontology.entityTypes.map(e => e.name).join(', ');
-    
+
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -379,19 +358,15 @@ export class OntologyManager {
       ],
       response_format: { type: 'json_object' }
     });
-    
+
     const relationshipType = JSON.parse(response.choices[0].message.content || '{}');
-    
-    // Add to ontology
+
     ontology.relationshipTypes.push(relationshipType);
     await this.saveOntology(userId, ontology);
-    
+
     return relationshipType;
   }
-  
-  /**
-   * Modify existing entity type using LLM
-   */
+
   async modifyEntityType(
     userId: string,
     entityTypeName: string,
@@ -399,11 +374,11 @@ export class OntologyManager {
   ): Promise<EntityTypeDefinition> {
     const ontology = await this.getOntology(userId);
     const entityType = ontology.entityTypes.find(e => e.name === entityTypeName);
-    
+
     if (!entityType) {
       throw new Error(`Entity type ${entityTypeName} not found`);
     }
-    
+
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -419,20 +394,16 @@ export class OntologyManager {
       ],
       response_format: { type: 'json_object' }
     });
-    
+
     const modifiedType = JSON.parse(response.choices[0].message.content || '{}');
-    
-    // Update in ontology
+
     const index = ontology.entityTypes.findIndex(e => e.name === entityTypeName);
     ontology.entityTypes[index] = modifiedType;
     await this.saveOntology(userId, ontology);
-    
+
     return modifiedType;
   }
-  
-  /**
-   * Suggest entity type for given text using LLM
-   */
+
   async suggestEntityType(text: string, context?: string): Promise<string> {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -451,13 +422,10 @@ export class OntologyManager {
         }
       ]
     });
-    
+
     return response.choices[0].message.content?.trim() || 'Concept';
   }
-  
-  /**
-   * Validate entity against ontology
-   */
+
   async validateEntity(userId: string, entity: any): Promise<{
     valid: boolean;
     errors: string[];
@@ -465,7 +433,7 @@ export class OntologyManager {
   }> {
     const ontology = await this.getOntology(userId);
     const entityType = ontology.entityTypes.find(e => e.name === entity.type);
-    
+
     if (!entityType) {
       return {
         valid: false,
@@ -473,20 +441,18 @@ export class OntologyManager {
         suggestions: ontology.entityTypes.map(e => e.name)
       };
     }
-    
+
     const errors: string[] = [];
-    
-    // Check required properties
+
     for (const prop of entityType.properties) {
       if (prop.required && !(prop.name in entity.properties)) {
         errors.push(`Missing required property: ${prop.name}`);
       }
-      
-      // Type validation
+
       if (prop.name in entity.properties) {
         const value = entity.properties[prop.name];
         const actualType = typeof value;
-        
+
         if (prop.type === 'date' && !(value instanceof Date) && isNaN(Date.parse(value))) {
           errors.push(`Invalid date format for property: ${prop.name}`);
         } else if (prop.type === 'array' && !Array.isArray(value)) {
@@ -496,22 +462,19 @@ export class OntologyManager {
         }
       }
     }
-    
+
     return {
       valid: errors.length === 0,
       errors
     };
   }
-  
-  /**
-   * Get visual ontology representation
-   */
+
   async getVisualOntology(userId: string): Promise<{
     nodes: any[];
     edges: any[];
   }> {
     const ontology = await this.getOntology(userId);
-    
+
     const nodes = ontology.entityTypes.map(et => ({
       id: et.name,
       label: et.name,
@@ -520,9 +483,9 @@ export class OntologyManager {
       icon: et.icon,
       properties: et.properties.length
     }));
-    
+
     const edges: any[] = [];
-    
+
     ontology.relationshipTypes.forEach((rt, idx) => {
       rt.sourceTypes.forEach(source => {
         rt.targetTypes.forEach(target => {
@@ -537,13 +500,10 @@ export class OntologyManager {
         });
       });
     });
-    
+
     return { nodes, edges };
   }
-  
-  /**
-   * Reset to default ontology
-   */
+
   async resetToDefault(userId: string): Promise<Ontology> {
     await this.saveOntology(userId, this.defaultOntology);
     return this.defaultOntology;
