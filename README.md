@@ -47,7 +47,7 @@ Streaming Response with Reasoning Chain
 ### 3. **Core Components**
 
 **Embedding Layer**
-- **Model**: OpenAI `text-embedding-3-small`
+- **Model**: OpenAI `text-embedding-3-large`
 - **Dimensions**: 3072
 - **Usage**: Documents, entities, relationships, queries
 
