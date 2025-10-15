@@ -487,8 +487,6 @@ export default function GraphVisualization({
                 linkWidth={(link: any) => Math.sqrt(link.strength || 1) * 1.5}
                 linkDirectionalParticles={2}
                 linkDirectionalParticleWidth={2}
-                linkDistance={100}
-                linkStrength={0.3}
                 onNodeClick={handleNodeClick}
                 onNodeHover={handleNodeHover}
                 cooldownTicks={200}
