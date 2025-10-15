@@ -275,7 +275,18 @@ export class ReasoningEngine {
           role: 'system',
           content: `You are a helpful AI assistant. Answer the user's question based on the provided context.
           Be concise, accurate, and cite your sources when possible. If the context doesn't contain enough 
-          information, acknowledge this clearly.`
+          information, acknowledge this clearly.
+          
+          IMPORTANT: Format your response using Markdown syntax:
+          - Use **bold** for emphasis
+          - Use *italics* for subtle emphasis
+          - Use \`code\` for technical terms, file names, or code snippets
+          - Use code blocks with \`\`\` for multi-line code
+          - Use proper headings (## Heading) for sections
+          - Use bullet points (-) or numbered lists (1.) for items
+          - Use > for important quotes or notes
+          - Use tables when comparing data
+          - Use [links](url) when referencing external resources`
         },
         {
           role: 'user',

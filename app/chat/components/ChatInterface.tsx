@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PaperAirplaneIcon, DocumentTextIcon, BeakerIcon, UserIcon } from '@heroicons/react/24/outline';
 import { LightBulbIcon, CogIcon, EyeIcon, CheckCircleIcon } from '@heroicons/react/24/solid';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import ResponseGraph from './ResponseGraph';
 
 interface Message {
@@ -442,7 +444,67 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                 </div>
               )}
               
-              <div className="whitespace-pre-wrap">{message.content}</div>
+              {/* Render markdown for assistant, plain text for user */}
+              {message.role === 'assistant' ? (
+                <div className="prose prose-sm max-w-none prose-invert">
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      // Custom components for better styling
+                      code: ({node, inline, className, children, ...props}: any) => {
+                        return inline ? (
+                          <code className="bg-gray-800 text-gray-100 px-1 py-0.5 rounded text-sm" {...props}>
+                            {children}
+                          </code>
+                        ) : (
+                          <code className="block bg-gray-800 text-gray-100 p-3 rounded-lg overflow-x-auto text-sm" {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
+                      pre: ({children}: any) => <div className="my-2">{children}</div>,
+                      p: ({children}: any) => <p className="mb-2 last:mb-0 text-gray-900">{children}</p>,
+                      ul: ({children}: any) => <ul className="list-disc list-inside mb-2 text-gray-900">{children}</ul>,
+                      ol: ({children}: any) => <ol className="list-decimal list-inside mb-2 text-gray-900">{children}</ol>,
+                      li: ({children}: any) => <li className="mb-1 text-gray-900">{children}</li>,
+                      h1: ({children}: any) => <h1 className="text-xl font-bold mb-2 text-gray-900">{children}</h1>,
+                      h2: ({children}: any) => <h2 className="text-lg font-bold mb-2 text-gray-900">{children}</h2>,
+                      h3: ({children}: any) => <h3 className="text-base font-bold mb-2 text-gray-900">{children}</h3>,
+                      blockquote: ({children}: any) => (
+                        <blockquote className="border-l-4 border-gray-400 pl-3 italic text-gray-700 my-2">
+                          {children}
+                        </blockquote>
+                      ),
+                      a: ({children, href}: any) => (
+                        <a href={href} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                          {children}
+                        </a>
+                      ),
+                      table: ({children}: any) => (
+                        <div className="overflow-x-auto my-2">
+                          <table className="min-w-full border-collapse border border-gray-300">
+                            {children}
+                          </table>
+                        </div>
+                      ),
+                      th: ({children}: any) => (
+                        <th className="border border-gray-300 px-3 py-2 bg-gray-200 font-semibold text-left text-gray-900">
+                          {children}
+                        </th>
+                      ),
+                      td: ({children}: any) => (
+                        <td className="border border-gray-300 px-3 py-2 text-gray-900">
+                          {children}
+                        </td>
+                      ),
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap">{message.content}</div>
+              )}
               
               {message.role === 'assistant' && showReasoning && message.reasoningChain && 
                 renderReasoningChain(message.reasoningChain)}
@@ -506,7 +568,61 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
           <div className="flex justify-start">
             <div className="max-w-2xl px-4 py-2 rounded-lg bg-gray-100 text-gray-900">
               {streamingMessage && (
-                <div className="whitespace-pre-wrap">{streamingMessage}</div>
+                <div className="prose prose-sm max-w-none">
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      code: ({node, inline, className, children, ...props}: any) => {
+                        return inline ? (
+                          <code className="bg-gray-800 text-gray-100 px-1 py-0.5 rounded text-sm" {...props}>
+                            {children}
+                          </code>
+                        ) : (
+                          <code className="block bg-gray-800 text-gray-100 p-3 rounded-lg overflow-x-auto text-sm" {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
+                      pre: ({children}: any) => <div className="my-2">{children}</div>,
+                      p: ({children}: any) => <p className="mb-2 last:mb-0 text-gray-900">{children}</p>,
+                      ul: ({children}: any) => <ul className="list-disc list-inside mb-2 text-gray-900">{children}</ul>,
+                      ol: ({children}: any) => <ol className="list-decimal list-inside mb-2 text-gray-900">{children}</ol>,
+                      li: ({children}: any) => <li className="mb-1 text-gray-900">{children}</li>,
+                      h1: ({children}: any) => <h1 className="text-xl font-bold mb-2 text-gray-900">{children}</h1>,
+                      h2: ({children}: any) => <h2 className="text-lg font-bold mb-2 text-gray-900">{children}</h2>,
+                      h3: ({children}: any) => <h3 className="text-base font-bold mb-2 text-gray-900">{children}</h3>,
+                      blockquote: ({children}: any) => (
+                        <blockquote className="border-l-4 border-gray-400 pl-3 italic text-gray-700 my-2">
+                          {children}
+                        </blockquote>
+                      ),
+                      a: ({children, href}: any) => (
+                        <a href={href} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                          {children}
+                        </a>
+                      ),
+                      table: ({children}: any) => (
+                        <div className="overflow-x-auto my-2">
+                          <table className="min-w-full border-collapse border border-gray-300">
+                            {children}
+                          </table>
+                        </div>
+                      ),
+                      th: ({children}: any) => (
+                        <th className="border border-gray-300 px-3 py-2 bg-gray-200 font-semibold text-left text-gray-900">
+                          {children}
+                        </th>
+                      ),
+                      td: ({children}: any) => (
+                        <td className="border border-gray-300 px-3 py-2 text-gray-900">
+                          {children}
+                        </td>
+                      ),
+                    }}
+                  >
+                    {streamingMessage}
+                  </ReactMarkdown>
+                </div>
               )}
               
               {showReasoning && currentReasoningSteps.length > 0 && renderReasoningChain(currentReasoningSteps)}

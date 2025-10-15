@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
             let finalAnswer = '';
             let sources: any[] = [];
             let queryKnowledgeGraph: any = null;
+            let toolResults: any[] = [];
             
             for await (const chunk of reasoningEngine.streamReasoning({
               userId: user.id,
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
                   }
                 });
                 
-                const toolResults = chunk.data.toolResults || [];
+                toolResults = chunk.data.toolResults || [];
                 toolResults.forEach((result: any) => {
                   if (result.tool === 'vector_search' && Array.isArray(result.data)) {
                     result.data.slice(0, 5).forEach((item: any) => {
@@ -147,14 +148,14 @@ export async function POST(request: NextRequest) {
               }
             }
             
-            if (assistantMessage.length > 100 || relevantEntityIds.length > 0) {
+            if (finalAnswer.length > 100 || relevantEntityIds.length > 0) {
               try {
                 let graphToSend = null;
                 
-                if (assistantMessage.length > 100) {
-                  const extractedGraph = await engine.extractGraphFromResponse(
+                if (finalAnswer.length > 100) {
+                  const extractedGraph = await reasoningEngine.extractGraphFromResponse(
                     query,
-                    assistantMessage,
+                    finalAnswer,
                     toolResults
                   );
                   
