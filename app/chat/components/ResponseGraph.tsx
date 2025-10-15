@@ -766,7 +766,7 @@ export default function ResponseGraph({
           <div className="relative">
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm flex items-center gap-1 hover:bg-gray-50"
+              className="px-3 py-2 border border-gray-300 rounded-md text-black text-sm flex items-center gap-1 hover:bg-gray-50"
             >
               <svg
                 className="h-4 w-4"
@@ -787,16 +787,11 @@ export default function ResponseGraph({
               <div className="absolute top-full right-0 mt-2 bg-white rounded-md shadow-lg border border-gray-200 py-2 z-10 min-w-[150px]">
                 <button
                   onClick={() => handleExport("json")}
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 transition-colors"
+                  className="w-full px-4 py-2 text-left text-sm text-black hover:bg-gray-50 transition-colors"
                 >
                   Export as JSON
                 </button>
-                <button
-                  onClick={() => handleExport("png")}
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 transition-colors"
-                >
-                  Export as PNG
-                </button>
+               
               </div>
             )}
           </div>
@@ -1002,8 +997,6 @@ export default function ResponseGraph({
             linkDirectionalParticleWidth={2}
             linkDirectionalParticleSpeed={0.005}
             linkLabel={(link: any) => link.type}
-            linkDistance={100}
-            linkStrength={0.3}
             d3AlphaMin={0.001}
             d3AlphaDecay={0.01}
             d3VelocityDecay={0.25}
@@ -1340,13 +1333,13 @@ export default function ResponseGraph({
               </div>
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1 block">
+                  <label className="text-sm font-medium text-black mb-1 block">
                     Start Node
                   </label>
                   <select
                     value={traversalStart}
                     onChange={(e) => setTraversalStart(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                    className="w-full px-3 py-2 border text-black border-slate-300 rounded-lg text-sm"
                   >
                     <option value="">Select start node...</option>
                     {processedData.nodes.map((node) => (
@@ -1357,13 +1350,13 @@ export default function ResponseGraph({
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700 mb-1 block">
+                  <label className="text-sm font-medium text-black mb-1 block">
                     End Node
                   </label>
                   <select
                     value={traversalEnd}
                     onChange={(e) => setTraversalEnd(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                    className="w-full px-3 py-2 border border-slate-300 text-black rounded-lg text-sm"
                   >
                     <option value="">Select end node...</option>
                     {processedData.nodes.map((node) => (
