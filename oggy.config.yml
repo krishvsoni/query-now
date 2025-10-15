@@ -1,0 +1,23 @@
+project:
+  name: "query-now"
+  language: "typescript"
+  framework: "nextjs"
+  
+analysis:
+  focus_areas:
+    - security
+    - performance
+    - testing
+    - maintainability
+  
+  production:
+    enabled: true
+    security_level: "strict"
+    
+  e2e_testing:
+    frameworks: ["cypress", "playwright"]
+    
+output:
+  format: "markdown"
+  include_line_numbers: true
+  detailed_reports: true
