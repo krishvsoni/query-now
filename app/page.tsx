@@ -76,6 +76,7 @@ export default async function Home() {
                   />
                 </svg>
               </div>
+              
               <h3 className="text-lg font-semibold text-foreground mb-2">Intelligent Chat</h3>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 Ask questions and get contextual answers directly from your document knowledge base.
