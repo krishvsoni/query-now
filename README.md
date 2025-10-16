@@ -8,14 +8,15 @@ An extensible, production-grade platform that unifies knowledge from multiple so
 [check the video tutorial→](https://www.loom.com/share/0f5147ce7f0e424da87790356595d07e?sid=79d5ac6e-10b2-47eb-b687-79bbafbbc2bd)
 
 ---
-## **Continuous Monitoring For Safe Commits**: This project is monitored and tested by [Oggy](https://github.com/krishvsoni/oggy) for code quality and safe commits built by me.
+### **Continuous Monitoring For Safe Commits**: This project is monitored and tested by [Oggy](https://github.com/krishvsoni/oggy) for code quality and safe commits built by me.
 
-[See detailed architecture →](working.md)
+
 
 
 
 
 ## Architecture
+[See detailed architecture →](working.md)
 
 ### 1. **Document-to-Graph Pipeline**
 ```
