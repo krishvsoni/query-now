@@ -85,7 +85,7 @@ Streaming Response with Reasoning Chain
 
  **Automatic Ontology Generation** - LLM extracts entities, relationships, hierarchies  
  **Entity Resolution & Deduplication** - Intelligent merging of similar entities  
- **OpenAI Embeddings** - 1536-dimensional vectors for all graph elements  
+ **OpenAI Embeddings** - 3072-dimensional vectors for all graph elements  
  **Agentic Retrieval** - Dynamic tool selection across vector/graph/filter methods  
  **Visual Knowledge Graphs** - Interactive graph visualization  
  **Streaming Responses** - Real-time reasoning chains  
