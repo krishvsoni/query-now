@@ -1,20 +1,19 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import { 
-  MagnifyingGlassIcon, 
-  AdjustmentsHorizontalIcon,
-  XMarkIcon,
-  SparklesIcon,
-  ArrowPathIcon,
-  RectangleGroupIcon,
-  CodeBracketIcon
-} from '@heroicons/react/24/outline';
+import { MailMinus as MagnifyingGlass, Sliders, X, Sparkles, ArrowDownRight as ArrowsPointingOut, LucideBrackets as CodeBracket } from 'lucide-react';
 
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
   ssr: false,
-  loading: () => <div className="flex items-center justify-center h-64">Loading graph...</div>
+  loading: () => (
+    <div className="flex items-center justify-center h-64">
+      <div className="flex flex-col items-center gap-3">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
+        <p className="text-sm text-muted-foreground">Loading graph...</p>
+      </div>
+    </div>
+  )
 });
 
 interface Node {
@@ -79,6 +78,7 @@ export default function GraphVisualization({
   const [selectedRelationType, setSelectedRelationType] = useState<string>('');
   const [showGeneratedCypher, setShowGeneratedCypher] = useState(false);
   const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
+  const [isMobile, setIsMobile] = useState(false);
   const fgRef = useRef<any>(null);
 
   const nodeTypeConfig = {
@@ -92,26 +92,42 @@ export default function GraphVisualization({
     default: { color: '#6B7280', size: 5 }
   };
 
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   const handleAISearch = useCallback(async () => {
     if (!aiSearchQuery.trim()) return;
     setIsAISearching(true);
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: `Find nodes in this knowledge graph that match: "${aiSearchQuery}". Graph entities: ${graphData.nodes.map(n => `${n.name} (${n.type})`).join(', ')}`
-          }]
-        })
+      // Perform intelligent search on graph nodes
+      const query = aiSearchQuery.toLowerCase().trim();
+      const foundNodes = graphData.nodes.filter(node => {
+        // Search in name
+        if (node.name.toLowerCase().includes(query)) return true;
+        // Search in type
+        if (node.type.toLowerCase().includes(query)) return true;
+        // Search in description
+        if (node.description && node.description.toLowerCase().includes(query)) return true;
+        // Fuzzy match for typos (simple Levenshtein distance)
+        const nameParts = node.name.toLowerCase().split(' ');
+        const queryParts = query.split(' ');
+        for (const namePart of nameParts) {
+          for (const queryPart of queryParts) {
+            if (namePart.includes(queryPart) || queryPart.includes(namePart)) {
+              return true;
+            }
+          }
+        }
+        return false;
       });
-      const data = await response.json();
-      const foundNodes = graphData.nodes.filter(node => 
-        data.message?.toLowerCase().includes(node.name.toLowerCase())
-      );
+      
       setAiSearchResults(foundNodes);
       setHighlightedNodes(new Set(foundNodes.map(n => n.id)));
+      
       if (foundNodes.length > 0 && fgRef.current) {
         const firstNode: any = foundNodes[0];
         fgRef.current.centerAt(firstNode.x, firstNode.y, 1000);
@@ -177,7 +193,10 @@ export default function GraphVisualization({
     }
   }, [customCypher]);
 
-  const relationshipTypes = Array.from(new Set(graphData.links.map(l => l.type)));
+  const relationshipTypes = useMemo(() => 
+    Array.from(new Set(graphData.links.map(l => l.type))), 
+    [graphData.links]
+  );
 
   const generateCypherQuery = useCallback(() => {
     const nodeStatements = filteredData.nodes.map((node, idx) => {
@@ -281,25 +300,31 @@ export default function GraphVisualization({
   }, [isOpen, query, documentIds, mode, preloadedGraphData]);
 
   useEffect(() => {
-    const filtered = {
-      nodes: graphData.nodes.filter(node => {
-        const matchesSearch = !searchTerm || 
-          node.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (node.description && node.description.toLowerCase().includes(searchTerm.toLowerCase()));
-        const matchesType = selectedNodeTypes.length === 0 || selectedNodeTypes.includes(node.type);
-        return matchesSearch && matchesType;
-      }),
-      links: graphData.links.filter(link => {
-        const sourceNode = graphData.nodes.find(n => n.id === link.source);
-        const targetNode = graphData.nodes.find(n => n.id === link.target);
-        const matchesRelationType = !selectedRelationType || link.type === selectedRelationType;
-        return sourceNode && targetNode && 
-               (selectedNodeTypes.length === 0 || 
-                (selectedNodeTypes.includes(sourceNode.type) && selectedNodeTypes.includes(targetNode.type))) &&
-               matchesRelationType;
-      })
-    };
-    setFilteredData(filtered);
+    const filteredNodes = graphData.nodes.filter(node => {
+      const matchesSearch = !searchTerm || 
+        node.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (node.description && node.description.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesType = selectedNodeTypes.length === 0 || selectedNodeTypes.includes(node.type);
+      return matchesSearch && matchesType;
+    });
+    
+    // Create a Set of filtered node IDs for fast lookup
+    const filteredNodeIds = new Set(filteredNodes.map(n => n.id));
+    
+    const filteredLinks = graphData.links.filter(link => {
+      // Get the actual node IDs (handle both string IDs and object references)
+      const sourceId = typeof link.source === 'object' ? (link.source as any).id : link.source;
+      const targetId = typeof link.target === 'object' ? (link.target as any).id : link.target;
+      
+      const matchesRelationType = !selectedRelationType || link.type === selectedRelationType;
+      
+      // Only include links where both nodes exist in filtered set
+      return filteredNodeIds.has(sourceId) && 
+             filteredNodeIds.has(targetId) && 
+             matchesRelationType;
+    });
+    
+    setFilteredData({ nodes: filteredNodes, links: filteredLinks });
   }, [searchTerm, selectedNodeTypes, graphData, selectedRelationType]);
 
   const handleNodeClick = (node: any) => {
@@ -342,120 +367,220 @@ export default function GraphVisualization({
     }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = highlightedNodes.has(node.id) ? '#b45309' : '#333';
+    ctx.fillStyle = highlightedNodes.has(node.id) ? '#fbbf24' : '#ffffff';
     ctx.fillText(label, node.x, node.y + node.size + fontSize * 1.2);
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-5/6 flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              Knowledge Graph
-              {mode === 'central' && ' - All Documents'}
-              {mode === 'document' && ' - Single Document'}
-              {mode === 'query' && ' - Query Results'}
-            </h2>
-            {query && (
-              <p className="text-sm text-gray-600">Related to: "{query}"</p>
-            )}
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+      <div className="w-full max-w-6xl h-[90vh] bg-card border border-border rounded-lg shadow-2xl flex flex-col overflow-hidden">
+        
+        {/* Header */}
+        <div className="border-b border-border bg-card p-3 sm:p-4">
+          <div className="flex items-start justify-between gap-3 sm:gap-4">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold text-foreground truncate">
+                Knowledge Graph
+                {mode === 'central' && ' - All Documents'}
+                {mode === 'document' && ' - Single Document'}
+                {mode === 'query' && ' - Query Results'}
+              </h2>
+              {query && (
+                <p className="text-xs sm:text-sm text-muted-foreground truncate mt-1">
+                  Related to: "{query}"
+                </p>
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 flex items-center justify-center hover:bg-muted rounded-md transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100"
-          >
-            <XMarkIcon className="h-5 w-5" />
-          </button>
         </div>
-        <div className="flex items-center space-x-4 p-4 border-b border-gray-200 bg-gray-50">
-          <div className="flex-1 relative">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search nodes..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm"
-            />
-          </div>
-          <div className="flex items-center space-x-2">
-            <AdjustmentsHorizontalIcon className="h-4 w-4 text-gray-500" />
-            <div className="flex flex-wrap gap-1">
-              {Object.keys(nodeTypeConfig).filter(type => type !== 'default').map(type => (
-                <button
-                  key={type}
-                  onClick={() => toggleNodeType(type)}
-                  className={`px-2 py-1 text-xs rounded-full border transition-colors ${
-                    selectedNodeTypes.includes(type)
-                      ? 'bg-blue-100 border-blue-300 text-blue-700'
-                      : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                  }`}
-                  style={{
-                    borderColor: selectedNodeTypes.includes(type) 
-                      ? nodeTypeConfig[type as keyof typeof nodeTypeConfig].color 
-                      : undefined
-                  }}
+
+        {/* Controls Section */}
+        <div className="border-b border-border bg-muted/30 overflow-x-auto">
+          <div className="p-3 sm:p-4 space-y-3">
+            {/* Search Bar */}
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search nodes..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2 h-9 sm:h-10 text-sm bg-input border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Filter Badges and Controls */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+              {/* Node Type Filters */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Sliders className="h-3.5 w-3.5" /> Entity Types
+                </label>
+                <div className="flex flex-wrap gap-1">
+                  {Object.keys(nodeTypeConfig).filter(type => type !== 'default').map(type => (
+                    <button
+                      key={type}
+                      onClick={() => toggleNodeType(type)}
+                      className={`px-2.5 py-1 text-xs rounded-full border transition-all ${
+                        selectedNodeTypes.includes(type)
+                          ? 'border-primary bg-primary/10 text-foreground font-medium'
+                          : 'border-border bg-card text-muted-foreground hover:border-primary/50'
+                      }`}
+                      style={{
+                        backgroundColor: selectedNodeTypes.includes(type) 
+                          ? nodeTypeConfig[type as keyof typeof nodeTypeConfig].color + '20'
+                          : undefined,
+                        borderColor: selectedNodeTypes.includes(type) 
+                          ? nodeTypeConfig[type as keyof typeof nodeTypeConfig].color 
+                          : undefined,
+                        color: selectedNodeTypes.includes(type) 
+                          ? nodeTypeConfig[type as keyof typeof nodeTypeConfig].color 
+                          : undefined
+                      }}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Relationship Type Filter */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">Relations</label>
+                <select
+                  value={selectedRelationType}
+                  onChange={(e) => setSelectedRelationType(e.target.value)}
+                  className="w-full px-3 py-2 h-9 text-sm bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                 >
-                  {type}
-                </button>
-              ))}
+                  <option value="">All Relations</option>
+                  {relationshipTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* AI Search */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" /> AI Search
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Find entities..."
+                    value={aiSearchQuery}
+                    onChange={(e) => setAiSearchQuery(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleAISearch()}
+                    className="flex-1 px-3 py-2 h-9 text-sm bg-input border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                  />
+                  <button
+                    onClick={handleAISearch}
+                    disabled={isAISearching}
+                    className="px-3 h-9 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-md text-sm font-medium transition-colors flex items-center gap-1"
+                  >
+                    {isAISearching ? (
+                      <div className="animate-spin h-3.5 w-3.5" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Path Finder */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <ArrowsPointingOut className="h-3.5 w-3.5" /> Path Finder
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={traversalStart}
+                    onChange={(e) => setTraversalStart(e.target.value)}
+                    className="flex-1 px-3 py-2 h-9 text-sm bg-input border border-border rounded-md text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                  >
+                    <option value="">Start</option>
+                    {graphData.nodes.slice(0, 20).map(node => (
+                      <option key={node.id} value={node.id}>{node.name.substring(0, 15)}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={traversalEnd}
+                    onChange={(e) => setTraversalEnd(e.target.value)}
+                    className="flex-1 px-3 py-2 h-9 text-sm bg-input border border-border rounded-md text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                  >
+                    <option value="">End</option>
+                    {graphData.nodes.slice(0, 20).map(node => (
+                      <option key={node.id} value={node.id}>{node.name.substring(0, 15)}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleTraversal}
+                    disabled={!traversalStart || !traversalEnd}
+                    className="px-2.5 h-9 bg-accent hover:bg-accent/90 disabled:opacity-50 text-accent-foreground rounded-md text-xs font-medium transition-colors"
+                  >
+                    Find
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Cypher Query Section */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <CodeBracket className="h-3.5 w-3.5" /> Cypher Query
+              </label>
+              <div className="flex gap-2">
+                <textarea
+                  value={customCypher}
+                  onChange={(e) => setCustomCypher(e.target.value)}
+                  placeholder="MATCH (n:Entity) RETURN n LIMIT 25"
+                  className="flex-1 px-3 py-2 text-xs bg-input border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-mono h-16 resize-none"
+                />
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={executeCypherQuery}
+                    className="px-3 h-9 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-medium transition-colors whitespace-nowrap"
+                  >
+                    Execute
+                  </button>
+                  <button
+                    onClick={() => setShowGeneratedCypher(!showGeneratedCypher)}
+                    className="px-3 h-9 bg-muted hover:bg-muted/80 text-foreground rounded-md text-xs font-medium transition-colors whitespace-nowrap"
+                  >
+                    View Query
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-          <select
-            value={selectedRelationType}
-            onChange={(e) => setSelectedRelationType(e.target.value)}
-            className="px-3 py-2 border text-black border-gray-300 rounded-md text-sm"
-          >
-            <option value="">All Relations</option>
-            {relationshipTypes.map(type => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => setShowAISearch(!showAISearch)}
-            className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-purple-700 hover:to-pink-700"
-          >
-            <SparklesIcon className="h-4 w-4" />
-            AI Search
-          </button>
-          <button
-            onClick={() => setShowTraversal(!showTraversal)}
-            className="px-3 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-green-700 hover:to-teal-700"
-          >
-            <ArrowPathIcon className="h-4 w-4" />
-            Traverse
-          </button>
-          <button
-            onClick={() => setShowCypherBuilder(!showCypherBuilder)}
-            className="px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-blue-700 hover:to-cyan-700"
-          >
-            <CodeBracketIcon className="h-4 w-4" />
-            Cypher
-          </button>
-          <button
-            onClick={() => setShowGeneratedCypher(!showGeneratedCypher)}
-            className="px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-indigo-700 hover:to-purple-700"
-          >
-            <CodeBracketIcon className="h-4 w-4" />
-            View Query
-          </button>
         </div>
-        <div className="flex-1 relative">
+
+        {/* Graph Canvas */}
+        <div className="flex-1 relative overflow-hidden bg-background">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <span className="ml-2 text-gray-600">Loading graph...</span>
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto mb-2"></div>
+                <p className="text-sm text-muted-foreground">Loading graph...</p>
+              </div>
             </div>
           ) : error ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <p className="text-red-600 mb-2">{error}</p>
-                <button
+                <p className="text-sm text-destructive mb-2">{error}</p>
+                <button 
                   onClick={fetchGraphData}
-                  className="text-blue-600 hover:text-blue-800 text-sm"
+                  className="px-3 py-1.5 text-xs bg-primary hover:bg-primary/90 text-primary-foreground rounded-md font-medium transition-colors"
                 >
                   Try again
                 </button>
@@ -463,9 +588,9 @@ export default function GraphVisualization({
             </div>
           ) : filteredData.nodes.length === 0 ? (
             <div className="flex items-center justify-center h-full">
-              <div className="text-center text-gray-500">
-                <p>No graph data available</p>
-                <p className="text-sm mt-1">Try uploading documents with entities and relationships</p>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-1">No graph data available</p>
+                <p className="text-xs text-muted-foreground">Try uploading documents with entities and relationships</p>
               </div>
             </div>
           ) : (
@@ -496,195 +621,40 @@ export default function GraphVisualization({
                 enableNodeDrag={true}
                 enableZoomInteraction={true}
                 enablePanInteraction={true}
-                backgroundColor="#ffffff"
+                backgroundColor="transparent"
               />
-              {showAISearch && (
-                <div className="absolute top-4 right-4 bg-white rounded-lg shadow-2xl p-4 w-80 border border-gray-200 max-h-96 overflow-y-auto z-10">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <SparklesIcon className="h-5 w-5 text-purple-600" />
-                      AI Search
-                    </h3>
-                    <button onClick={() => setShowAISearch(false)} className="text-gray-400 hover:text-gray-600">
-                      <XMarkIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Describe what you're looking for..."
-                    value={aiSearchQuery}
-                    onChange={(e) => setAiSearchQuery(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleAISearch()}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm mb-2"
-                  />
-                  <button
-                    onClick={handleAISearch}
-                    disabled={isAISearching}
-                    className="w-full px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-md text-sm hover:from-purple-700 hover:to-pink-700 disabled:opacity-50"
-                  >
-                    {isAISearching ? 'Searching...' : 'Search'}
-                  </button>
-                  {aiSearchResults.length > 0 && (
-                    <div className="mt-3 space-y-2">
-                      <p className="text-xs font-semibold text-gray-700">Results:</p>
-                      {aiSearchResults.map(node => (
-                        <div
-                          key={node.id}
-                          onClick={() => setSelectedNode(node)}
-                          className="p-2 bg-gray-50 rounded-md hover:bg-gray-100 cursor-pointer text-sm"
-                        >
-                          <div className="font-medium">{node.name}</div>
-                          <div className="text-xs text-gray-600">{node.type}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              {showTraversal && (
-                <div className="absolute top-4 right-4 bg-white rounded-lg shadow-2xl p-4 w-80 border border-gray-200 z-10">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <ArrowPathIcon className="h-5 w-5 text-green-600" />
-                      Path Finder
-                    </h3>
-                    <button onClick={() => setShowTraversal(false)} className="text-gray-400 hover:text-gray-600">
-                      <XMarkIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs font-medium text-black block mb-1">Start Node</label>
-                      <select
-                        value={traversalStart}
-                        onChange={(e) => setTraversalStart(e.target.value)}
-                        className="w-full px-2 py-1.5 text-black border border-gray-300 rounded-md text-sm"
+
+              {/* Selected Node Details - Desktop Only */}
+              {selectedNode && !isMobile && (
+                <div className="absolute bottom-4 left-4 z-10 w-80 max-h-96 animate-fade-in">
+                  <div className="bg-card border border-border rounded-lg shadow-lg p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold text-foreground truncate">{selectedNode.name}</h3>
+                      <button
+                        onClick={() => setSelectedNode(null)}
+                        className="h-6 w-6 flex-shrink-0 flex items-center justify-center hover:bg-muted rounded-md transition-colors"
                       >
-                        <option value="">Select...</option>
-                        {graphData.nodes.map(node => (
-                          <option key={node.id} value={node.id}>{node.name}</option>
-                        ))}
-                      </select>
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
+                    
                     <div>
-                      <label className="text-xs font-medium text-black block mb-1">End Node</label>
-                      <select
-                        value={traversalEnd}
-                        onChange={(e) => setTraversalEnd(e.target.value)}
-                        className="w-full px-2 py-1.5 border text-black border-gray-300 rounded-md text-sm"
-                      >
-                        <option value="">Select...</option>
-                        {graphData.nodes.map(node => (
-                          <option key={node.id} value={node.id}>{node.name}</option>
-                        ))}
-                      </select>
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Type</p>
+                      <span className="inline-block px-2.5 py-1 bg-primary/10 text-primary rounded-md text-xs font-medium">
+                        {selectedNode.type}
+                      </span>
                     </div>
-                    <button
-                      onClick={handleTraversal}
-                      disabled={!traversalStart || !traversalEnd}
-                      className="w-full px-3 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-md text-sm hover:from-green-700 hover:to-teal-700 disabled:opacity-50"
-                    >
-                      Find Path
-                    </button>
-                    {traversalPath && (
-                      <div className="mt-3 p-3 bg-green-50 rounded-md">
-                        <p className="text-xs font-semibold text-green-900 mb-1">
-                          Distance: {traversalPath.distance} hops
-                        </p>
-                        <div className="space-y-1">
-                          {traversalPath.nodes.map((node, idx) => (
-                            <div key={idx} className="text-xs text-gray-700">
-                              {idx > 0 && '→ '}{node.name}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {showCypherBuilder && (
-                <div className="absolute top-4 right-4 bg-white rounded-lg shadow-2xl p-4 w-96 border border-gray-200 max-h-96 overflow-y-auto z-10">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <CodeBracketIcon className="h-5 w-5 text-blue-600" />
-                      Cypher Query
-                    </h3>
-                    <button onClick={() => setShowCypherBuilder(false)} className="text-gray-400 hover:text-gray-600">
-                      <XMarkIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                  <textarea
-                    value={customCypher}
-                    onChange={(e) => setCustomCypher(e.target.value)}
-                    placeholder="MATCH (n:Entity) RETURN n LIMIT 25"
-                    className="w-full px-3 py-2 text-black border border-gray-300 rounded-md text-sm font-mono mb-2 h-32"
-                  />
-                  <button
-                    onClick={executeCypherQuery}
-                    className="w-full px-3 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-md text-sm hover:from-blue-700 hover:to-cyan-700"
-                  >
-                    Execute Query
-                  </button>
-                  {cypherResults && (
-                    <div className="mt-3 p-3 bg-blue-50 rounded-md max-h-48 overflow-y-auto">
-                      <pre className="text-xs text-gray-800 whitespace-pre-wrap">
-                        {JSON.stringify(cypherResults, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              )}
-              {showGeneratedCypher && (
-                <div className="absolute top-4 left-4 bg-white rounded-lg shadow-2xl p-4 w-96 border border-gray-200 max-h-96 overflow-y-auto z-10">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <CodeBracketIcon className="h-5 w-5 text-indigo-600" />
-                      Generated Cypher Query
-                    </h3>
-                    <button onClick={() => setShowGeneratedCypher(false)} className="text-gray-400 hover:text-gray-600">
-                      <XMarkIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                  <div className="bg-slate-900 rounded-lg p-3 overflow-x-auto">
-                    <button
-                      onClick={() => navigator.clipboard.writeText(generateCypherQuery())}
-                      className="mb-2 px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded flex items-center gap-1"
-                    >
-                      Copy Query
-                    </button>
-                    <pre className="text-xs text-cyan-300 font-mono whitespace-pre-wrap">
-                      {generateCypherQuery()}
-                    </pre>
-                  </div>
-                  <div className="mt-3 text-xs text-gray-600">
-                    <p><strong>Nodes:</strong> {filteredData.nodes.length}</p>
-                    <p><strong>Relationships:</strong> {filteredData.links.length}</p>
-                  </div>
-                </div>
-              )}
-              {selectedNode && (
-                <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-2xl p-4 w-80 border border-gray-200 z-10">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-gray-900">{selectedNode.name}</h3>
-                    <button onClick={() => setSelectedNode(null)} className="text-gray-400 hover:text-gray-600">
-                      <XMarkIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-700">Type:</span>
-                      <span className="px-2 py-1 bg-gray-100 rounded-md text-gray-800">{selectedNode.type}</span>
-                    </div>
+
                     {selectedNode.description && (
                       <div>
-                        <span className="font-medium text-gray-700">Description:</span>
-                        <p className="text-gray-600 mt-1">{selectedNode.description}</p>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Description</p>
+                        <p className="text-sm text-foreground line-clamp-3">{selectedNode.description}</p>
                       </div>
                     )}
-                    <div className="pt-2 border-t border-gray-200">
-                      <span className="font-medium text-gray-700">Connections:</span>
-                      <div className="mt-1 space-y-1">
+
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Connections</p>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
                         {graphData.links
                           .filter(link => link.source === selectedNode.id || link.target === selectedNode.id)
                           .slice(0, 5)
@@ -692,8 +662,8 @@ export default function GraphVisualization({
                             const otherNodeId = link.source === selectedNode.id ? link.target : link.source;
                             const otherNode = graphData.nodes.find(n => n.id === otherNodeId);
                             return (
-                              <div key={idx} className="text-xs text-gray-600">
-                                {link.type} → {otherNode?.name || 'Unknown'}
+                              <div key={idx} className="text-xs text-muted-foreground">
+                                <span className="text-primary font-medium">{link.type}</span> → {otherNode?.name}
                               </div>
                             );
                           })}
@@ -702,25 +672,102 @@ export default function GraphVisualization({
                   </div>
                 </div>
               )}
+
+              {/* Path Results - Desktop Only */}
+              {traversalPath && !isMobile && (
+                <div className="absolute top-4 right-4 z-10 w-80 max-h-64 animate-fade-in">
+                  <div className="bg-card border border-primary/50 bg-primary/5 rounded-lg shadow-lg p-4">
+                    <div className="mb-3">
+                      <h3 className="font-semibold text-foreground text-sm">Path Found</h3>
+                      <p className="text-xs text-muted-foreground">Distance: {traversalPath.distance} hops</p>
+                    </div>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {traversalPath.nodes.map((node, idx) => (
+                        <div key={idx} className="text-xs text-foreground">
+                          {idx > 0 && '↓ '}{node.name}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* AI Search Results - Desktop Only */}
+              {aiSearchResults.length > 0 && !isMobile && (
+                <div className="absolute top-4 left-4 z-10 w-80 max-h-64 animate-fade-in">
+                  <div className="bg-card border border-primary/50 bg-primary/5 rounded-lg shadow-lg p-4">
+                    <h3 className="font-semibold text-foreground text-sm mb-2">AI Search Results ({aiSearchResults.length})</h3>
+                    <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                      {aiSearchResults.map(node => (
+                        <button
+                          key={node.id}
+                          onClick={() => setSelectedNode(node)}
+                          className="w-full p-2 bg-card hover:bg-muted rounded-md transition-colors text-left border border-border"
+                        >
+                          <p className="text-sm font-medium truncate text-foreground">{node.name}</p>
+                          <p className="text-xs text-muted-foreground">{node.type}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Generated Cypher Query */}
+              {showGeneratedCypher && (
+                <div className="absolute inset-4 z-20 bg-card border-2 border-primary rounded-lg shadow-2xl p-4 overflow-hidden flex flex-col">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-foreground flex items-center gap-2">
+                      <CodeBracket className="h-4 w-4 text-primary" />
+                      Generated Cypher Query
+                    </h3>
+                    <button
+                      onClick={() => setShowGeneratedCypher(false)}
+                      className="h-6 w-6 flex items-center justify-center hover:bg-muted rounded-md transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="bg-slate-900 rounded-lg p-3 flex-1 overflow-auto mb-3">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(generateCypherQuery())}
+                      className="mb-2 px-2 py-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs rounded font-medium transition-colors"
+                    >
+                      Copy Query
+                    </button>
+                    <pre className="text-xs text-cyan-300 font-mono whitespace-pre-wrap overflow-x-auto">
+                      {generateCypherQuery()}
+                    </pre>
+                  </div>
+                  <div className="text-xs text-muted-foreground space-y-1 border-t border-border pt-2">
+                    <p><strong>Nodes:</strong> {filteredData.nodes.length}</p>
+                    <p><strong>Relationships:</strong> {filteredData.links.length}</p>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
-        <div className="p-4 border-t border-gray-200 bg-gray-50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4 text-sm text-gray-600">
+
+        <div className="border-t border-border bg-muted/30 px-3 py-2 sm:px-4 sm:py-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
+            <div className="flex gap-4">
               <span>{filteredData.nodes.length} nodes</span>
               <span>{filteredData.links.length} connections</span>
             </div>
-            <div className="flex items-center space-x-3 text-xs">
-              {Object.entries(nodeTypeConfig).filter(([type]) => type !== 'default').map(([type, config]) => (
-                <div key={type} className="flex items-center space-x-1">
-                  <div 
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: config.color }}
-                  />
-                  <span className="text-gray-600">{type}</span>
-                </div>
-              ))}
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(nodeTypeConfig)
+                .filter(([type]) => type !== 'default')
+                .slice(0, isMobile ? 3 : 7)
+                .map(([type, config]) => (
+                  <div key={type} className="flex items-center gap-1">
+                    <div 
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: config.color }}
+                    />
+                    <span className="hidden sm:inline text-xs">{type}</span>
+                  </div>
+                ))}
             </div>
           </div>
         </div>
