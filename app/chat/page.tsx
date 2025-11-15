@@ -13,7 +13,9 @@ import {
   FileText, 
   Upload,
   Share2,
-  Clock
+  Clock,
+  Menu,
+  X
 } from 'lucide-react';
 
 export default function ChatPage() {
@@ -28,6 +30,7 @@ export default function ChatPage() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string; fullName: string } | null>(null);
   const [loadedMessages, setLoadedMessages] = useState<any[] | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const handleUploadComplete = (document: any, user: any) => {
     setCurrentUser(user);
@@ -67,8 +70,15 @@ export default function ChatPage() {
       label: 'Chat',
       icon: MessageSquare,
       component: (
-        <div className="flex h-full">
-          <div className="flex-1">
+        <div className="flex h-full relative">
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="lg:hidden fixed top-20 right-4 z-40 p-3 bg-gradient-to-r from-primary to-accent text-primary-foreground rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300"
+          >
+            {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+
+          <div className="flex-1 w-full lg:w-auto">
             <ChatInterface 
               onShowGraph={handleShowGraph} 
               selectedDocuments={selectedDocuments}
@@ -77,8 +87,26 @@ export default function ChatPage() {
             />
           </div>
           
-          <div className="w-80 border-l border-primary/20 bg-gradient-to-br from-card/50 to-card/20 backdrop-blur-sm p-4 overflow-y-auto">
-            <div className="space-y-6">
+          {/* Sidebar - Responsive */}
+          <div className={`
+            fixed lg:relative
+            top-0 right-0
+            h-full lg:h-auto
+            w-80 lg:w-80
+            transform transition-transform duration-300 ease-in-out
+            ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
+            z-30 lg:z-auto
+            border-l border-primary/20 bg-gradient-to-br from-card/50 to-card/20 backdrop-blur-sm p-4 overflow-y-auto
+            shadow-2xl lg:shadow-none
+          `}>
+            {/* Mobile Close Button Inside Sidebar */}
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="lg:hidden absolute top-4 right-4 p-2 hover:bg-muted rounded-lg transition-colors"
+            >
+            </button>
+
+            <div className="space-y-6 mt-12 lg:mt-0">
               <div>
                 <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
                   <Upload className="w-4 h-4 text-primary" />
@@ -105,6 +133,14 @@ export default function ChatPage() {
               />
             </div>
           </div>
+
+          {/* Mobile Overlay */}
+          {isSidebarOpen && (
+            <div
+              className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-20"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+          )}
         </div>
       )
     },
@@ -237,7 +273,7 @@ export default function ChatPage() {
       
       <Tabs tabs={tabs} defaultTab="chat" />
       
-      <div className="fixed bottom-6 right-6 flex flex-col space-y-3 z-40">
+      <div className="fixed bottom-20 right-6 flex flex-col space-y-3 z-40">
         <button
           onClick={() => setShowHistory(true)}
           className="group relative bg-gradient-to-r from-primary to-accent text-primary-foreground p-4 rounded-xl shadow-lg hover:shadow-2xl hover:shadow-primary/40 transition-all duration-300 hover:scale-110 border border-primary/50"
