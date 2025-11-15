@@ -3,8 +3,7 @@
 import { RegisterLink, LoginLink } from "@kinde-oss/kinde-auth-nextjs/components"
 import { ArrowRight, Zap, Brain, MessageSquare, Upload,ShipWheel,Feather, BookOpenText,Search, Database, Sparkles, ChevronRight, Check, Rocket ,FileStack} from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { DocumentProcessor } from '../components/DocumentProcessor.tsx'
+import { DocumentProcessor } from '../components/DocumentProcessor'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
 export default function Home() {
