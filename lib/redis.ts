@@ -256,18 +256,33 @@ export class DocumentPipeline {
   }
 }
 
-export async function updateDocumentStatus(documentId: string, status: string, stage?: string) {
+export async function updateDocumentStatus(documentId: string, status: string, stage?: string, details?: any) {
   try {
     const redis = await getRedisClient();
-    const statusData = {
+    const statusData: any = {
       status,
       stage: stage || 'unknown',
       updatedAt: new Date().toISOString()
     };
+    
+    if (details) {
+      if (details.message) statusData.message = details.message;
+      if (details.progress !== undefined) statusData.progress = details.progress.toString();
+      if (details.totalChunks) statusData.totalChunks = details.totalChunks.toString();
+      if (details.processedChunks !== undefined) statusData.processedChunks = details.processedChunks.toString();
+      if (details.entitiesCreated !== undefined) statusData.entitiesCreated = details.entitiesCreated.toString();
+      if (details.relationshipsCreated !== undefined) statusData.relationshipsCreated = details.relationshipsCreated.toString();
+      if (details.totalEntities !== undefined) statusData.totalEntities = details.totalEntities.toString();
+      if (details.wordCount) statusData.wordCount = details.wordCount.toString();
+    }
+    
     await redis.hSet(`document:${documentId}:status`, statusData);
+    //  expiry for 24 hours
+    await redis.expire(`document:${documentId}:status`, 86400);
+    
     try {
       const { updateDocumentStatus: updateNeo4jStatus } = await import('./neo4j');
-      await updateNeo4jStatus(documentId, status, stage || 'unknown');
+      await updateNeo4jStatus(documentId, status, stage || 'unknown', details);
     } catch (neo4jError) {
       console.warn('Could not update Neo4j document status:', neo4jError);
     }
@@ -293,6 +308,44 @@ export async function deleteDocumentStatus(documentId: string) {
     await redis.del(`document:${documentId}:status`);
   } catch (error) {
     console.error('Error deleting document status from Redis:', error);
+  }
+}
+
+export async function cleanupStalledDocuments() {
+  try {
+    const redis = await getRedisClient();
+    const pattern = 'document:*:status';
+    const keys = await redis.keys(pattern);
+    
+    const stalledDocs: string[] = [];
+    const now = Date.now();
+    const stalledThreshold = 30 * 60 * 1000; // 30 minutes
+    
+    for (const key of keys) {
+      const statusData = await redis.hGetAll(key);
+      if (statusData.status === 'processing' && statusData.updatedAt) {
+        const updatedAt = new Date(statusData.updatedAt).getTime();
+        const timeSinceUpdate = now - updatedAt;
+        
+        if (timeSinceUpdate > stalledThreshold) {
+          const documentId = key.split(':')[1];
+          stalledDocs.push(documentId);
+          
+          // Update status to error
+          await updateDocumentStatus(documentId, 'error', 'stalled', {
+            message: 'Processing stalled and timed out',
+            progress: 0
+          });
+          
+          console.log(`[Cleanup] Marked stalled document as failed: ${documentId} (stalled for ${Math.floor(timeSinceUpdate / 60000)} minutes)`);
+        }
+      }
+    }
+    
+    return stalledDocs;
+  } catch (error) {
+    console.error('Error cleaning up stalled documents:', error);
+    return [];
   }
 }
 

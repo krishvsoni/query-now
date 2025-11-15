@@ -3,7 +3,7 @@ import { getUserDetails } from '@/lib/auth';
 import { uploadDocument } from '@/lib/appwrite';
 import { getUserDocuments, createUserDocumentNode } from '@/lib/neo4j';
 import { documentProcessor } from '@/lib/document-processor';
-import { DocumentPipeline } from '@/lib/redis';
+import { DocumentPipeline, getDocumentStatus, cleanupStalledDocuments } from '@/lib/redis';
 import { ID } from 'node-appwrite';
 
 export const runtime = 'nodejs';
@@ -11,6 +11,17 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   try {
     const userDetails = await getUserDetails(true);
+    
+    // Check for cleanup query parameter
+    const { searchParams } = new URL(request.url);
+    if (searchParams.get('cleanup') === 'true') {
+      const stalledDocs = await cleanupStalledDocuments();
+      return NextResponse.json({
+        success: true,
+        message: `Cleaned up ${stalledDocs.length} stalled documents`,
+        stalledDocuments: stalledDocs
+      });
+    }
 
     let documents = [];
     try {
@@ -21,6 +32,31 @@ export async function GET(request: NextRequest) {
       console.warn('Could not fetch user documents from Neo4j:', error);
       documents = [];
     }
+    
+    // Fetch detailed status from Redis for each document
+    const documentsWithStatus = await Promise.all(
+      documents.map(async (doc: any) => {
+        const redisStatus = await getDocumentStatus(doc.id);
+        return {
+          id: doc.id,
+          fileName: doc.fileName,
+          status: redisStatus?.status || doc.status || 'unknown',
+          processingStage: redisStatus?.stage || doc.processingStage || 'unknown',
+          uploadedAt: doc.uploadedAt || doc.createdAt,
+          fileId: doc.fileId,
+          fileSize: doc.fileSize,
+          wordCount: doc.wordCount,
+          pageCount: doc.pageCount,
+          // Add detailed progress information from Redis
+          progress: redisStatus?.progress ? parseInt(redisStatus.progress) : undefined,
+          message: redisStatus?.message,
+          processedChunks: redisStatus?.processedChunks ? parseInt(redisStatus.processedChunks) : undefined,
+          totalChunks: redisStatus?.totalChunks ? parseInt(redisStatus.totalChunks) : undefined,
+          entitiesCreated: redisStatus?.entitiesCreated ? parseInt(redisStatus.entitiesCreated) : undefined,
+          relationshipsCreated: redisStatus?.relationshipsCreated ? parseInt(redisStatus.relationshipsCreated) : undefined,
+        };
+      })
+    );
 
     return NextResponse.json({
       success: true,
@@ -29,17 +65,7 @@ export async function GET(request: NextRequest) {
         email: userDetails.email,
         fullName: userDetails.fullName,
       },
-      documents: documents.map((doc: any) => ({
-        id: doc.id,
-        fileName: doc.fileName,
-        status: doc.status || 'unknown',
-        processingStage: doc.processingStage || 'unknown',
-        uploadedAt: doc.uploadedAt || doc.createdAt,
-        fileId: doc.fileId,
-        fileSize: doc.fileSize,
-        wordCount: doc.wordCount,
-        pageCount: doc.pageCount,
-      })),
+      documents: documentsWithStatus,
       setupRequired: documents.length === 0,
     });
   } catch (error) {
