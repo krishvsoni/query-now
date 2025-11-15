@@ -2,13 +2,18 @@
 import type React from "react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
+import { MagnifyingGlassIcon, FunnelIcon, XMarkIcon, SparklesIcon, CodeBracketIcon } from '@heroicons/react/24/outline';
+
 const ForceGraph2D = dynamic(
   () => import("react-force-graph-2d"),
   {
     ssr: false,
     loading: () => (
       <div className="flex items-center justify-center h-64">
-        Loading graph...
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
+          <p className="text-sm text-muted-foreground">Loading graph...</p>
+        </div>
       </div>
     ),
   }
@@ -168,18 +173,26 @@ export default function ResponseGraph({
   const [customCypherQuery, setCustomCypherQuery] = useState("");
   const [cypherResults, setCypherResults] = useState<any>(null);
   const [showGeneratedCypher, setShowGeneratedCypher] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const fgRef = useRef<any>(null);
 
   const nodeTypeConfig = {
-    PERSON: { color: "#3B82F6", size: 5 },
-    ORGANIZATION: { color: "#8b5cf6", size: 6 },
-    CONCEPT: { color: "#f59e0b", size: 4 },
-    LOCATION: { color: "#10b981", size: 5 },
-    EVENT: { color: "#ef4444", size: 5 },
-    TECHNOLOGY: { color: "#06b6d4", size: 5 },
-    PRODUCT: { color: "#84CC16", size: 4 },
-    default: { color: "#6B7280", size: 4 },
+    PERSON: { color: "#3B82F6", size: 8 },
+    ORGANIZATION: { color: "#8b5cf6", size: 10 },
+    CONCEPT: { color: "#f59e0b", size: 6 },
+    LOCATION: { color: "#10b981", size: 7 },
+    EVENT: { color: "#ef4444", size: 9 },
+    TECHNOLOGY: { color: "#06b6d4", size: 7 },
+    PRODUCT: { color: "#84CC16", size: 6 },
+    default: { color: "#6B7280", size: 5 },
   };
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const handleAISearch = useCallback(async () => {
     if (!aiSearchQuery.trim()) return;
@@ -513,7 +526,7 @@ export default function ResponseGraph({
     
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = highlightedNodes.has(node.id) ? "#b45309" : "#333";
+    ctx.fillStyle = highlightedNodes.has(node.id) ? "#fbbf24" : "#ffffff";
     ctx.fillText(label, node.x, node.y + node.size + fontSize * 1.2);
   };
 
@@ -564,12 +577,12 @@ export default function ResponseGraph({
   if (!isOpen) return null;
   if (!processedData || processedData.nodes.length === 0) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-8">
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+        <div className="w-full max-w-2xl bg-card border border-border rounded-lg shadow-2xl p-8">
           <div className="text-center">
-            <div className="p-4 bg-slate-100 rounded-2xl inline-block mb-4">
+            <div className="p-4 bg-muted/50 rounded-2xl inline-block mb-4">
               <svg
-                className="w-16 h-16 text-slate-400"
+                className="w-16 h-16 text-muted-foreground"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -582,15 +595,15 @@ export default function ResponseGraph({
                 />
               </svg>
             </div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-3">
+            <h3 className="text-2xl font-bold text-foreground mb-3">
               No Graph Data Available
             </h3>
-            <p className="text-slate-600 mb-6">
+            <p className="text-muted-foreground mb-6">
               This response doesn't contain a knowledge graph visualization.
             </p>
             <button
               onClick={onClose}
-              className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl font-semibold"
+              className="px-6 py-3 bg-gradient-to-r from-primary to-accent text-primary-foreground rounded-xl hover:opacity-90 transition-all duration-200 shadow-lg hover:shadow-xl font-semibold"
             >
               Close
             </button>
@@ -601,240 +614,187 @@ export default function ResponseGraph({
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-5/6 flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              Response Knowledge Graph
-            </h2>
-            {query && (
-              <p className="text-sm text-gray-600">
-                Related to: "{query}"
-              </p>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+      <div className="w-full max-w-6xl h-[90vh] bg-card border border-border rounded-lg shadow-2xl flex flex-col overflow-hidden">
+        
+        {/* Header */}
+        <div className="border-b border-border bg-card p-3 sm:p-4">
+          <div className="flex items-start justify-between gap-3 sm:gap-4">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold text-foreground truncate">
+                Response Knowledge Graph
+              </h2>
+              {query && (
+                <p className="text-xs sm:text-sm text-muted-foreground truncate mt-1">
+                  Related to: "{query}"
+                </p>
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 flex items-center justify-center hover:bg-muted rounded-md transition-colors"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center space-x-4 p-4 border-b border-gray-200 bg-gray-50">
-          <div className="flex-1 relative">
-            <svg
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search nodes..."
-              value={searchTerm}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm"
-            />
-          </div>
-          <div className="flex items-center space-x-2">
-            <svg
-              className="h-4 w-4 text-gray-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
-              />
-            </svg>
-            <div className="flex flex-wrap gap-1">
-              {Object.keys(nodeTypeConfig)
-                .filter((type) => type !== "default")
-                .map((type) => (
+        
+        {/* Controls Section */}
+        <div className="border-b border-border bg-muted/30 overflow-x-auto">
+          <div className="p-3 sm:p-4 space-y-3">
+            {/* Search Bar */}
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search nodes..."
+                  value={searchTerm}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2 h-9 sm:h-10 text-sm bg-input border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Filter Badges and Controls */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {/* Node Type Filters */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <FunnelIcon className="h-3.5 w-3.5" /> Entity Types
+                </label>
+                <div className="flex flex-wrap gap-1">
+                  {Object.keys(nodeTypeConfig)
+                    .filter((type) => type !== "default")
+                    .map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => handleTypeFilter(type === filterType ? null : type)}
+                        className={`px-2.5 py-1 text-xs rounded-full border transition-all ${
+                          filterType === type
+                            ? "border-primary bg-primary/10 text-foreground font-medium"
+                            : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                        }`}
+                        style={{
+                          backgroundColor: filterType === type 
+                            ? nodeTypeConfig[type as keyof typeof nodeTypeConfig].color + '20'
+                            : undefined,
+                          borderColor: filterType === type 
+                            ? nodeTypeConfig[type as keyof typeof nodeTypeConfig].color 
+                            : undefined,
+                          color: filterType === type 
+                            ? nodeTypeConfig[type as keyof typeof nodeTypeConfig].color 
+                            : undefined
+                        }}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                </div>
+              </div>
+
+              {/* Relationship Type Filter */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">Relations</label>
+                <select
+                  value={selectedRelationType || ""}
+                  onChange={(e) => setSelectedRelationType(e.target.value || null)}
+                  className="w-full px-3 py-2 h-9 text-sm bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                >
+                  <option value="">All Relations</option>
+                  {relationshipTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* AI Search */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <SparklesIcon className="h-3.5 w-3.5" /> AI Search
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Find entities..."
+                    value={aiSearchQuery}
+                    onChange={(e) => setAiSearchQuery(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && handleAISearch()}
+                    className="flex-1 px-3 py-2 h-9 text-sm bg-input border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                  />
                   <button
-                    key={type}
-                    onClick={() => handleTypeFilter(type === filterType ? null : type)}
-                    className={`px-2 py-1 text-xs rounded-full border transition-colors ${
-                      filterType === type
-                        ? "bg-blue-100 border-blue-300 text-blue-700"
-                        : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
-                    }`}
-                    style={{
-                      borderColor:
-                        filterType === type
-                          ? nodeTypeConfig[type as keyof typeof nodeTypeConfig].color
-                          : undefined,
-                    }}
+                    onClick={handleAISearch}
+                    disabled={isAISearching}
+                    className="px-3 h-9 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-md text-sm font-medium transition-colors flex items-center gap-1"
                   >
-                    {type}
+                    {isAISearching ? (
+                      <div className="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full" />
+                    ) : (
+                      <SparklesIcon className="h-3.5 w-3.5" />
+                    )}
                   </button>
-                ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Export and Cypher Query Section */}
+            <div className="flex gap-2 flex-wrap">
+              <div className="relative">
+                <button
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  className="px-3 h-9 border border-border rounded-md hover:bg-muted transition-colors text-foreground text-sm flex items-center gap-1"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                    />
+                  </svg>
+                  Export
+                </button>
+                {showExportMenu && (
+                  <div className="absolute top-full right-0 mt-2 bg-card rounded-md shadow-lg border border-border py-2 z-10 min-w-[150px]">
+                    <button
+                      onClick={() => handleExport("json")}
+                      className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted transition-colors"
+                    >
+                      Export as JSON
+                    </button>
+                    <button
+                      onClick={() => handleExport("png")}
+                      className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted transition-colors"
+                    >
+                      Export as PNG
+                    </button>
+                  </div>
+                )}
+              </div>
+              {graphData.metadata?.cypherQuery && (
+                <button
+                  onClick={() => setShowCypherQuery(!showCypherQuery)}
+                  className="px-3 h-9 bg-muted hover:bg-muted/80 text-foreground rounded-md text-xs font-medium transition-colors"
+                >
+                  {showCypherQuery ? "Hide" : "Show"} Query
+                </button>
+              )}
+              <button
+                onClick={() => setShowGeneratedCypher(!showGeneratedCypher)}
+                className="px-3 h-9 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md text-xs font-medium transition-colors flex items-center gap-1"
+              >
+                <CodeBracketIcon className="h-3.5 w-3.5" />
+                View Generated
+              </button>
             </div>
           </div>
-          <select
-            value={selectedRelationType || ""}
-            onChange={(e) => setSelectedRelationType(e.target.value || null)}
-            className="px-3 py-2 border border-gray-300 text-black rounded-md text-sm"
-          >
-            <option value="">All Relations</option>
-            {relationshipTypes.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={() => setShowAISearch(!showAISearch)}
-            className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-purple-700 hover:to-pink-700"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-              />
-            </svg>
-            AI Search
-          </button>
-          <button
-            onClick={() => setShowTraversal(!showTraversal)}
-            className="px-3 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-green-700 hover:to-teal-700"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            Traverse
-          </button>
-          <button
-            onClick={() => setShowOntology(!showOntology)}
-            className="px-3 py-2 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-orange-700 hover:to-red-700"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
-              />
-            </svg>
-            Ontology
-          </button>
-          <div className="relative">
-            <button
-              onClick={() => setShowExportMenu(!showExportMenu)}
-              className="px-3 py-2 border border-gray-300 rounded-md text-black text-sm flex items-center gap-1 hover:bg-gray-50"
-            >
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                />
-              </svg>
-              Export
-            </button>
-            {showExportMenu && (
-              <div className="absolute top-full right-0 mt-2 bg-white rounded-md shadow-lg border border-gray-200 py-2 z-10 min-w-[150px]">
-                <button
-                  onClick={() => handleExport("json")}
-                  className="w-full px-4 py-2 text-left text-sm text-black hover:bg-gray-50 transition-colors"
-                >
-                  Export as JSON
-                </button>
-               
-              </div>
-            )}
-          </div>
-          {graphData.metadata?.cypherQuery && (
-            <button
-              onClick={() => setShowCypherQuery(!showCypherQuery)}
-              className="px-3 py-2 bg-indigo-50 border border-indigo-300 rounded-md hover:bg-indigo-100 transition-colors text-sm flex items-center gap-1 text-indigo-700"
-            >
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
-                />
-              </svg>
-              {showCypherQuery ? "Hide" : "Show"} Cypher
-            </button>
-          )}
-          <button
-            onClick={() => setShowGeneratedCypher(!showGeneratedCypher)}
-            className="px-3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-md text-sm flex items-center gap-1 hover:from-indigo-700 hover:to-purple-700"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
-              />
-            </svg>
-            View Query
-          </button>
         </div>
         {showCypherQuery && graphData.metadata?.cypherQuery && (
           <div className="px-6 pb-4 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
@@ -886,91 +846,37 @@ export default function ResponseGraph({
             </div>
           </div>
         )}
-        <div className="flex-1 relative">
+        
+        {/* Graph Canvas */}
+        <div className="flex-1 relative overflow-hidden bg-background">
           {showGeneratedCypher && (
-            <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-sm rounded-xl shadow-2xl p-5 w-[500px] border border-purple-200 max-h-[500px] overflow-y-auto z-10">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-purple-900 flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5 text-purple-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
-                    />
-                  </svg>
-                  Current State Cypher Query
+            <div className="absolute inset-4 z-20 bg-card border-2 border-primary rounded-lg shadow-2xl p-4 overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-foreground flex items-center gap-2">
+                  <CodeBracketIcon className="h-4 w-4 text-primary" />
+                  Generated Cypher Query
                 </h3>
                 <button
                   onClick={() => setShowGeneratedCypher(false)}
-                  className="text-slate-400 hover:text-slate-600"
+                  className="h-6 w-6 flex items-center justify-center hover:bg-muted rounded-md transition-colors"
                 >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
+                  <XMarkIcon className="h-4 w-4" />
                 </button>
               </div>
-              <div className="bg-slate-900 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold text-cyan-400">
-                    Neo4j Cypher
-                  </span>
-                  <button
-                    onClick={() =>
-                      navigator.clipboard.writeText(generateCurrentCypherQuery())
-                    }
-                    className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs rounded flex items-center gap-1"
-                  >
-                    <svg
-                      className="w-3 h-3"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                      />
-                    </svg>
-                    Copy
-                  </button>
-                </div>
-                <pre className="text-xs text-cyan-300 font-mono whitespace-pre-wrap max-h-[350px] overflow-y-auto">
+              <div className="bg-slate-900 rounded-lg p-3 flex-1 overflow-auto mb-3">
+                <button
+                  onClick={() => navigator.clipboard.writeText(generateCurrentCypherQuery())}
+                  className="mb-2 px-2 py-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs rounded font-medium transition-colors"
+                >
+                  Copy Query
+                </button>
+                <pre className="text-xs text-cyan-300 font-mono whitespace-pre-wrap overflow-x-auto">
                   {generateCurrentCypherQuery()}
                 </pre>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                <div className="bg-blue-50 rounded-lg p-2">
-                  <div className="font-semibold text-blue-900">Nodes</div>
-                  <div className="text-blue-700 text-lg">
-                    {visibleData.nodes.length}
-                  </div>
-                </div>
-                <div className="bg-emerald-50 rounded-lg p-2">
-                  <div className="font-semibold text-emerald-900">
-                    Relationships
-                  </div>
-                  <div className="text-emerald-700 text-lg">
-                    {visibleData.links.length}
-                  </div>
-                </div>
+              <div className="text-xs text-muted-foreground space-y-1 border-t border-border pt-2">
+                <p><strong>Nodes:</strong> {visibleData.nodes.length}</p>
+                <p><strong>Relationships:</strong> {visibleData.links.length}</p>
               </div>
             </div>
           )}
@@ -1012,7 +918,7 @@ export default function ResponseGraph({
             enableNodeDrag={true}
             enableZoomInteraction={true}
             enablePanInteraction={true}
-            backgroundColor="#ffffff"
+            backgroundColor="transparent"
           />
           {showLegend && (
             <div className="absolute top-6 right-6 bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl p-5 border border-slate-200 min-w-[200px]">
@@ -1078,423 +984,76 @@ export default function ResponseGraph({
               </svg>
             </button>
           )}
-          {selectedNode && (
-            <div className="absolute bottom-6 left-6 bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 max-w-md border border-slate-200 animate-in slide-in-from-bottom-4 duration-300">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-3 h-3 rounded-full shadow-sm ${
-                      selectedNode.type === "PERSON"
-                        ? "bg-blue-500"
-                        : selectedNode.type === "ORGANIZATION"
-                        ? "bg-purple-500"
-                        : selectedNode.type === "LOCATION"
-                        ? "bg-emerald-500"
-                        : selectedNode.type === "CONCEPT"
-                        ? "bg-orange-500"
-                        : selectedNode.type === "EVENT"
-                        ? "bg-red-500"
-                        : selectedNode.type === "TECHNOLOGY"
-                        ? "bg-cyan-500"
-                        : "bg-slate-500"
-                    }`}
-                  ></div>
-                  <h3 className="font-bold text-slate-900 text-lg">
-                    {selectedNode.name}
-                  </h3>
-                </div>
-                <button
-                  onClick={() => setSelectedNode(null)}
-                  className="text-slate-400 hover:text-slate-600 transition-colors p-1"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+          
+          {/* Selected Node Details - Desktop Only */}
+          {!isMobile && selectedNode && (
+            <div className="absolute bottom-4 left-4 z-10 w-80 max-h-96 animate-fade-in">
+              <div className="bg-card border border-border rounded-lg shadow-lg p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="font-semibold text-foreground truncate">{selectedNode.name}</h3>
+                  <button
+                    onClick={() => setSelectedNode(null)}
+                    className="h-6 w-6 flex-shrink-0 flex items-center justify-center hover:bg-muted rounded-md transition-colors"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-              <div className="mb-4 px-3 py-2 bg-slate-100 rounded-lg">
-                <p className="text-sm text-slate-600">
-                  Type:{" "}
-                  <span className="font-semibold text-slate-900">
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Type</p>
+                  <span className="inline-block px-2.5 py-1 bg-primary/10 text-primary rounded-md text-xs font-medium">
                     {selectedNode.type}
                   </span>
-                </p>
-              </div>
-              {selectedNode.description && (
-                <div className="mb-4 px-3 py-2 bg-blue-50 rounded-lg">
-                  <p className="text-sm text-slate-700">
-                    {selectedNode.description}
-                  </p>
                 </div>
-              )}
-              {selectedNode.properties &&
-                Object.keys(selectedNode.properties).length > 0 && (
-                  <div className="mb-4 space-y-2">
-                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Properties
-                    </h4>
-                    <div className="space-y-1.5">
-                      {Object.entries(selectedNode.properties).map(
-                        ([key, value]) => (
-                          <div
-                            key={key}
-                            className="text-sm px-3 py-2 bg-slate-50 rounded-lg"
-                          >
-                            <span className="font-semibold text-slate-700">
-                              {key}:
-                            </span>{" "}
-                            <span className="text-slate-600">
-                              {String(value)}
-                            </span>
+
+                {selectedNode.description && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Description</p>
+                    <p className="text-sm text-foreground line-clamp-3">{selectedNode.description}</p>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Connections</p>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {processedData.links
+                      .filter((link) => link.source === selectedNode.id || link.target === selectedNode.id)
+                      .slice(0, 5)
+                      .map((link, idx) => {
+                        const otherNodeId = link.source === selectedNode.id ? link.target : link.source;
+                        const otherNode = processedData.nodes.find((n) => n.id === otherNodeId);
+                        return (
+                          <div key={idx} className="text-xs text-muted-foreground">
+                            <span className="text-primary font-medium">{link.type}</span> → {otherNode?.name}
                           </div>
-                        )
-                      )}
-                    </div>
+                        );
+                      })}
                   </div>
-                )}
-              <div className="pt-4 border-t border-slate-200">
-                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-                  Relationships
-                </h4>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {processedData.links
-                    .filter(
-                      (link) =>
-                        link.source === selectedNode.id ||
-                        link.target === selectedNode.id
-                    )
-                    .map((link, idx) => {
-                      const otherNodeId =
-                        link.source === selectedNode.id
-                          ? link.target
-                          : link.source;
-                      const otherNode = processedData.nodes.find(
-                        (n) => n.id === otherNodeId
-                      );
-                      const isOutgoing = link.source === selectedNode.id;
-                      return (
-                        <div
-                          key={idx}
-                          className="flex items-center gap-2 text-sm px-3 py-2 bg-gradient-to-r from-slate-50 to-slate-100 rounded-lg"
-                        >
-                          <span
-                            className={`font-semibold ${
-                              isOutgoing ? "text-emerald-600" : "text-blue-600"
-                            }`}
-                          >
-                            {isOutgoing ? "→" : "←"}
-                          </span>
-                          <span className="text-slate-600 font-medium">
-                            {link.type}
-                          </span>
-                          <span className="text-slate-900 font-semibold">
-                            {otherNode?.name || "Unknown"}
-                          </span>
-                        </div>
-                      );
-                    })}
                 </div>
               </div>
             </div>
           )}
-          {showAISearch && (
-            <div className="absolute top-24 right-6 bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 w-96 border border-slate-200 max-h-[500px] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5 text-purple-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                    />
-                  </svg>
-                  AI Semantic Search
-                </h3>
-                <button
-                  onClick={() => setShowAISearch(false)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <input
-                    type="text"
-                    placeholder="e.g., 'Find all companies related to AI'"
-                    value={aiSearchQuery}
-                    onChange={(e) => setAiSearchQuery(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && handleAISearch()}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-                  />
-                </div>
-                <button
-                  onClick={handleAISearch}
-                  disabled={isAISearching}
-                  className="w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isAISearching ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Searching...
-                    </>
-                  ) : (
-                    "Search with AI"
-                  )}
-                </button>
-                {aiSearchResults.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    <h4 className="text-sm font-semibold text-slate-700">
-                      Results ({aiSearchResults.length})
-                    </h4>
-                    {aiSearchResults.map((node) => (
-                      <div
-                        key={node.id}
-                        onClick={() => setSelectedNode(node)}
-                        className="p-3 bg-slate-50 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors"
-                      >
-                        <div className="font-semibold text-slate-900">
-                          {node.name}
-                        </div>
-                        <div className="text-xs text-slate-600">{node.type}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          {showTraversal && (
-            <div className="absolute top-24 right-6 bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 w-96 border border-slate-200">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5 text-green-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Path Finder
-                </h3>
-                <button
-                  onClick={() => setShowTraversal(false)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-black mb-1 block">
-                    Start Node
-                  </label>
-                  <select
-                    value={traversalStart}
-                    onChange={(e) => setTraversalStart(e.target.value)}
-                    className="w-full px-3 py-2 border text-black border-slate-300 rounded-lg text-sm"
-                  >
-                    <option value="">Select start node...</option>
-                    {processedData.nodes.map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {node.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-black mb-1 block">
-                    End Node
-                  </label>
-                  <select
-                    value={traversalEnd}
-                    onChange={(e) => setTraversalEnd(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 text-black rounded-lg text-sm"
-                  >
-                    <option value="">Select end node...</option>
-                    {processedData.nodes.map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {node.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  onClick={handleTraversal}
-                  disabled={!traversalStart || !traversalEnd}
-                  className="w-full px-4 py-2 bg-gradient-to-r from-green-600 to-teal-600 text-white rounded-lg hover:from-green-700 hover:to-teal-700 disabled:opacity-50"
-                >
-                  Find Shortest Path
-                </button>
-                {traversalPath && (
-                  <div className="mt-4 p-4 bg-green-50 rounded-lg">
-                    <div className="text-sm font-semibold text-green-900 mb-2">
-                      Path Found! Distance: {traversalPath.distance}
-                    </div>
-                    <div className="space-y-1">
-                      {traversalPath.nodes.map((node, idx) => (
-                        <div key={idx} className="text-sm text-slate-700">
-                          {idx > 0 && (
-                            <span className="text-green-600 mr-2">→</span>
-                          )}
-                          {node.name}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          {showOntology && (
-            <div className="absolute top-24 right-6 bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 w-96 border border-slate-200 max-h-[500px] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5 text-orange-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
-                    />
-                  </svg>
-                  Visual Ontology
-                </h3>
-                <button
-                  onClick={() => setShowOntology(false)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-              <div className="space-y-4">
-                {ontologyClasses.map((ontClass) => (
-                  <div
-                    key={ontClass.name}
-                    className="p-4 bg-gradient-to-br from-orange-50 to-red-50 rounded-lg border border-orange-200"
-                  >
-                    <h4 className="font-bold text-orange-900 mb-2">
-                      {ontClass.name}
-                    </h4>
-                    {ontClass.properties.length > 0 && (
-                      <div className="mb-2">
-                        <div className="text-xs font-semibold text-slate-600 mb-1">
-                          Properties:
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {ontClass.properties.map((prop) => (
-                            <span
-                              key={prop}
-                              className="text-xs px-2 py-1 bg-white rounded-md text-slate-700"
-                            >
-                              {prop}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {ontClass.relationships.length > 0 && (
-                      <div>
-                        <div className="text-xs font-semibold text-slate-600 mb-1">
-                          Relationships:
-                        </div>
-                        <div className="space-y-1">
-                          {ontClass.relationships.map((rel, idx) => (
-                            <div
-                              key={idx}
-                              className="text-xs px-2 py-1 bg-white rounded-md text-slate-700"
-                            >
-                              {rel}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          
         </div>
-        <div className="p-4 border-t border-gray-200 bg-gray-50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4 text-sm text-gray-600">
+        
+        {/* Footer */}
+        <div className="border-t border-border bg-muted/30 px-3 py-2 sm:px-4 sm:py-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
+            <div className="flex gap-4">
               <span>{visibleData.nodes.length} nodes</span>
               <span>{visibleData.links.length} connections</span>
             </div>
-            <div className="flex items-center space-x-3 text-xs">
+            <div className="flex flex-wrap gap-2">
               {Object.entries(nodeTypeConfig)
                 .filter(([type]) => type !== "default")
+                .slice(0, isMobile ? 3 : 7)
                 .map(([type, config]) => (
-                  <div key={type} className="flex items-center space-x-1">
-                    <div
-                      className="w-3 h-3 rounded-full"
+                  <div key={type} className="flex items-center gap-1">
+                    <div 
+                      className="w-2 h-2 rounded-full flex-shrink-0"
                       style={{ backgroundColor: config.color }}
                     />
-                    <span className="text-gray-600">{type}</span>
+                    <span className="hidden sm:inline text-xs">{type}</span>
                   </div>
                 ))}
             </div>
