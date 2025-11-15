@@ -17,6 +17,7 @@ export default function ProfileDropdown() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -48,12 +49,22 @@ export default function ProfileDropdown() {
       const data = await response.json();
       if (data.success) {
         setUser(data.user);
+        setImageError(false); // Reset image error state
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(part => part[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   const handleLogout = () => {
@@ -80,15 +91,16 @@ export default function ProfileDropdown() {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center space-x-2 px-3 py-2 rounded-xl hover:bg-primary/10 transition-all border border-primary/20 focus:outline-none focus:ring-2 focus:ring-primary"
       >
-        {user.picture ? (
+        {user.picture && !imageError ? (
           <img
             src={user.picture}
             alt={user.fullName}
-            className="h-8 w-8 rounded-full object-cover"
+            className="h-8 w-8 rounded-full object-cover border-2 border-primary/30"
+            onError={() => setImageError(true)}
           />
         ) : (
-          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center">
-            <User className="w-4 h-4 text-primary" />
+          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-xs">
+            {user.fullName ? getInitials(user.fullName) : user.email?.[0]?.toUpperCase() || 'U'}
           </div>
         )}
         <span className="text-sm font-semibold text-foreground hidden sm:inline">
@@ -101,15 +113,16 @@ export default function ProfileDropdown() {
         <div className="absolute right-0 mt-2 w-64 rounded-xl border border-primary/30 bg-gradient-to-br from-card/95 to-card/90 backdrop-blur-xl shadow-2xl z-50">
           <div className="p-4 border-b border-primary/20">
             <div className="flex items-center space-x-3">
-              {user.picture ? (
+              {user.picture && !imageError ? (
                 <img
                   src={user.picture}
                   alt={user.fullName}
-                  className="h-10 w-10 rounded-full object-cover"
+                  className="h-10 w-10 rounded-full object-cover border-2 border-primary/30"
+                  onError={() => setImageError(true)}
                 />
               ) : (
-                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center">
-                  <User className="w-5 h-5 text-primary" />
+                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-sm">
+                  {user.fullName ? getInitials(user.fullName) : user.email?.[0]?.toUpperCase() || 'U'}
                 </div>
               )}
               <div className="flex-1 min-w-0">
