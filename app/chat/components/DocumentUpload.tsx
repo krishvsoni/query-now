@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { CloudArrowUpIcon, DocumentIcon, XMarkIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { Upload, FileText, X, CheckCircle } from 'lucide-react';
 
 interface Document {
   id: string;
@@ -109,16 +109,17 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
   });
 
   return (
-    <div className="w-full max-w-md mx-auto">
+    <div className="w-full">
       <div
         {...getRootProps()}
         className={`
-          relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all
-          ${isDragActive 
-            ? 'border-blue-500 bg-blue-50' 
+          relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
+          ${
+            isDragActive 
+            ? 'border-primary bg-primary/10 backdrop-blur-sm' 
             : uploading 
-              ? 'border-gray-300 bg-gray-50 cursor-not-allowed' 
-              : 'border-gray-300 hover:border-blue-500 hover:bg-gray-50'
+              ? 'border-primary/30 bg-card/50 cursor-not-allowed' 
+              : 'border-primary/30 hover:border-primary bg-gradient-to-br from-card/40 to-card/20 hover:from-card/60 hover:to-card/40 backdrop-blur-sm'
           }
         `}
       >
@@ -126,22 +127,24 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
         
         {uploading ? (
           <div className="flex flex-col items-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
-            <p className="text-sm text-gray-600">Uploading to Appwrite...</p>
-            <p className="text-xs text-gray-500 mt-1">This may take a few moments</p>
+            <div className="animate-spin rounded-full h-10 w-10 border-3 border-primary border-t-transparent mb-3"></div>
+            <p className="text-sm text-foreground font-semibold">Uploading...</p>
+            <p className="text-xs text-muted-foreground mt-1">This may take a few moments</p>
           </div>
         ) : (
           <div className="flex flex-col items-center">
-            <CloudArrowUpIcon className="h-12 w-12 text-gray-400 mb-2" />
+            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center mb-3">
+              <Upload className="w-7 h-7 text-primary" />
+            </div>
             {isDragActive ? (
-              <p className="text-sm text-blue-600">Drop your document here...</p>
+              <p className="text-sm text-primary font-semibold">Drop your document here...</p>
             ) : (
               <div>
-                <p className="text-sm text-gray-600 mb-1">
-                  Drag & drop a document, or <span className="text-blue-600 font-medium">browse</span>
+                <p className="text-sm text-foreground mb-1">
+                  Drag & drop a document, or <span className="text-primary font-semibold">browse</span>
                 </p>
-                <p className="text-xs text-gray-500 mb-2">
-                  PDF, DOCX, TXT  (no size limit)
+                <p className="text-xs text-muted-foreground mb-2">
+                  PDF, DOCX, TXT (no size limit)
                 </p>
               </div>
             )}
@@ -150,18 +153,18 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
       </div>
 
       {error && (
-        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md flex items-start">
-          <XMarkIcon className="h-5 w-5 text-red-500 mr-2 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-700">{error}</p>
+        <div className="mt-3 p-3 rounded-xl border border-destructive/30 bg-destructive/10 backdrop-blur-sm flex items-start">
+          <X className="w-5 h-5 text-destructive mr-2 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-destructive font-medium">{error}</p>
         </div>
       )}
 
       {success && (
-        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-md flex items-start">
-          <CheckCircleIcon className="h-5 w-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-green-700">
-            <p className="font-medium">{success}</p>
-            <p className="text-xs text-green-500 mt-1">
+        <div className="mt-3 p-3 rounded-xl border border-primary/30 bg-primary/10 backdrop-blur-sm flex items-start">
+          <CheckCircle className="w-5 h-5 text-primary mr-2 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-foreground">
+            <p className="font-semibold">{success}</p>
+            <p className="text-xs text-muted-foreground mt-1">
               You can now ask questions about this document in the chat!
             </p>
           </div>

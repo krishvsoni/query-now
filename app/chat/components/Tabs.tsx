@@ -1,12 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  ChatBubbleLeftRightIcon, 
-  DocumentTextIcon, 
-  CloudArrowUpIcon,
-  ShareIcon
-} from '@heroicons/react/24/outline';
 
 interface Tab {
   id: string;
@@ -27,7 +21,7 @@ export default function Tabs({ tabs, defaultTab }: TabsProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex border-b border-gray-200 bg-white">
+      <div className="flex border-b border-primary/20 bg-gradient-to-r from-card/50 to-card/30 backdrop-blur-sm">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -37,15 +31,18 @@ export default function Tabs({ tabs, defaultTab }: TabsProps) {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
-                flex items-center space-x-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors
+                group relative flex items-center space-x-2 px-6 py-4 text-sm font-semibold border-b-2 transition-all duration-300
                 ${isActive 
-                  ? 'border-blue-500 text-blue-600' 
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-primary text-foreground bg-gradient-to-br from-primary/20 to-accent/10' 
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-primary/5 hover:border-primary/50'
                 }
               `}
             >
-              <Icon className="h-5 w-5" />
+              <Icon className={`w-5 h-5 transition-colors ${isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`} />
               <span>{tab.label}</span>
+              {isActive && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-accent"></div>
+              )}
             </button>
           );
         })}

@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  ClockIcon, 
-  ChatBubbleLeftRightIcon,
-  XMarkIcon,
-  TrashIcon
-} from '@heroicons/react/24/outline';
+  Clock, 
+  MessageSquare,
+  X,
+  Trash2
+} from 'lucide-react';
 
 interface ChatMessage {
   id: string;
@@ -92,42 +92,44 @@ export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHist
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-y-0 right-0 w-80 bg-white shadow-2xl z-50 flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+    <div className="fixed inset-y-0 right-0 w-80 bg-gradient-to-br from-card/95 to-card/90 backdrop-blur-xl shadow-2xl border-l border-primary/20 z-50 flex flex-col">
+      <div className="flex items-center justify-between p-4 border-b border-primary/20">
         <div className="flex items-center space-x-2">
-          <ClockIcon className="h-5 w-5 text-gray-600" />
-          <h2 className="text-lg font-semibold text-gray-900">Chat History</h2>
+          <Clock className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-bold text-foreground">Chat History</h2>
         </div>
         <button
           onClick={onClose}
-          className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-100"
+          className="p-2 text-muted-foreground hover:text-foreground rounded-xl hover:bg-primary/10 transition-all"
         >
-          <XMarkIcon className="h-5 w-5" />
+          <X className="w-5 h-5" />
         </button>
       </div>
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
           </div>
         ) : error ? (
           <div className="p-4 text-center">
-            <p className="text-red-600 mb-2">{error}</p>
+            <p className="text-destructive mb-2 font-semibold">{error}</p>
             <button
               onClick={fetchSessions}
-              className="text-blue-600 hover:text-blue-800 text-sm"
+              className="text-primary hover:text-accent text-sm font-semibold transition-colors"
             >
               Try again
             </button>
           </div>
         ) : sessions.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            <ChatBubbleLeftRightIcon className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-            <p>No chat history yet</p>
+          <div className="p-8 text-center text-muted-foreground">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center mx-auto mb-4">
+              <MessageSquare className="w-8 h-8 text-primary" />
+            </div>
+            <p className="font-semibold text-foreground">No chat history yet</p>
             <p className="text-sm mt-1">Start a conversation to see it here</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-primary/10">
             {sessions.map((session) => (
               <button
                 key={session.sessionId}
@@ -138,17 +140,17 @@ export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHist
                     onClose();
                   }
                 }}
-                className="w-full p-4 text-left hover:bg-gray-50 transition-colors"
+                className="w-full p-4 text-left hover:bg-primary/5 transition-all rounded-lg"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
+                    <p className="text-sm font-semibold text-foreground truncate">
                       {session.lastMessage}
                     </p>
-                    <div className="flex items-center mt-1 text-xs text-gray-500 space-x-2">
+                    <div className="flex items-center mt-1 text-xs text-muted-foreground space-x-2">
                       <span>{formatDate(session.timestamp)}</span>
                       <span>•</span>
-                      <span>{session.messageCount} messages</span>
+                      <span className="font-semibold">{session.messageCount} messages</span>
                     </div>
                   </div>
                 </div>
@@ -158,10 +160,10 @@ export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHist
           
         )}
       </div>
-      <div className="p-4 border-t border-gray-200 bg-gray-50">
+      <div className="p-4 border-t border-primary/20 bg-card/50">
         <button
           onClick={fetchSessions}
-          className="w-full px-4 py-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+          className="w-full px-4 py-2 text-sm text-foreground hover:text-primary font-semibold rounded-lg hover:bg-primary/10 transition-all"
         >
           Refresh
         </button>
