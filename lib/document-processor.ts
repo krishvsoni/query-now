@@ -163,7 +163,10 @@ export class DocumentProcessor {
     mimeType: string
   ): Promise<void> {
     try {
-      await updateDocumentStatus(documentId, 'processing', 'parsing');
+      await updateDocumentStatus(documentId, 'processing', 'parsing', {
+        message: 'Extracting text from document...',
+        progress: 0
+      });
 
       const extracted = await this.parseDocument(fileBuffer, fileName, mimeType);
       await createUserDocumentNode(userId, documentId, fileName, extracted.metadata);
@@ -174,7 +177,12 @@ export class DocumentProcessor {
       const chunks = chunkText(extracted.content, 1000, 200);
       console.log(`Split into ${chunks.length.toLocaleString()} chunks for processing`);
 
-      await updateDocumentStatus(documentId, 'processing', 'embedding');
+      await updateDocumentStatus(documentId, 'processing', 'embedding', {
+        message: `Creating embeddings for ${chunks.length} chunks...`,
+        totalChunks: chunks.length,
+        processedChunks: 0,
+        progress: 15
+      });
 
       const batchSize = chunks.length > 5000 ? 3 : chunks.length > 1000 ? 5 : 10;
       const delayBetweenBatches = chunks.length > 1000 ? 100 : 0;
@@ -189,9 +197,18 @@ export class DocumentProcessor {
         );
         await Promise.all(batchPromises);
         
-        const progress = ((i + batch.length) / chunks.length * 100).toFixed(1);
+        const processedChunks = i + batch.length;
+        const progress = 15 + Math.floor((processedChunks / chunks.length) * 45); // 15-60%
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`Progress: ${i + batch.length}/${chunks.length} chunks (${progress}%) | Elapsed: ${elapsed}s`);
+        console.log(`Progress: ${processedChunks}/${chunks.length} chunks (${((processedChunks/chunks.length)*100).toFixed(1)}%) | Elapsed: ${elapsed}s`);
+        
+        // Update status with progress
+        await updateDocumentStatus(documentId, 'processing', 'embedding', {
+          message: `Embedded ${processedChunks}/${chunks.length} chunks`,
+          totalChunks: chunks.length,
+          processedChunks,
+          progress
+        });
         
         if (delayBetweenBatches > 0 && i + batchSize < chunks.length) {
           await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
@@ -201,16 +218,29 @@ export class DocumentProcessor {
       const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(`Embedding complete: ${chunks.length} chunks in ${totalTime}s (${(chunks.length / parseFloat(totalTime)).toFixed(1)} chunks/s)`);
 
-      await updateDocumentStatus(documentId, 'processing', 'ontology');
+      await updateDocumentStatus(documentId, 'processing', 'ontology', {
+        message: 'Extracting entities and relationships...',
+        progress: 60
+      });
       
-      await this.extractOntology(extracted.content, documentId, userId);
+      const ontologyStats = await this.extractOntology(extracted.content, documentId, userId);
 
-      await updateDocumentStatus(documentId, 'completed', 'completed');
+      await updateDocumentStatus(documentId, 'completed', 'completed', {
+        message: 'Processing complete!',
+        progress: 100,
+        totalChunks: chunks.length,
+        entitiesCreated: ontologyStats.entitiesCreated,
+        relationshipsCreated: ontologyStats.relationshipsCreated,
+        wordCount: extracted.metadata.wordCount
+      });
       
       console.log(`Document ${documentId} processing completed successfully.`);
     } catch (error) {
       console.error(`Error processing document ${documentId}:`, error);
-      await updateDocumentStatus(documentId, 'error', 'failed');
+      await updateDocumentStatus(documentId, 'error', 'failed', {
+        message: error instanceof Error ? error.message : 'Processing failed',
+        progress: 0
+      });
       throw error;
     }
   }
@@ -242,7 +272,7 @@ export class DocumentProcessor {
     content: string,
     documentId: string,
     userId: string
-  ): Promise<void> {
+  ): Promise<{ entitiesCreated: number; relationshipsCreated: number }> {
     try {
       const maxContentLength = 50000;
       let contentSample = content;
@@ -256,9 +286,20 @@ export class DocumentProcessor {
         console.log(`Ontology extraction: Sampled ${contentSample.length.toLocaleString()} chars from ${content.length.toLocaleString()} chars`);
       }
 
+      await updateDocumentStatus(documentId, 'processing', 'ontology', {
+        message: 'Analyzing content with AI...',
+        progress: 65
+      });
+
       const ontology = await extractEntitiesAndRelationships(contentSample);
       
       console.log(`[Ontology] Extracted ${ontology.entities.length} entities and ${ontology.relationships.length} relationships`);
+
+      await updateDocumentStatus(documentId, 'processing', 'ontology', {
+        message: `Creating ${ontology.entities.length} entities...`,
+        progress: 70,
+        totalEntities: ontology.entities.length
+      });
 
       // Create a map to track created entity IDs
       const entityNameToId = new Map<string, string>();
@@ -266,7 +307,8 @@ export class DocumentProcessor {
       let entitySuccessCount = 0;
       let entityErrorCount = 0;
       
-      for (const entity of ontology.entities) {
+      for (let i = 0; i < ontology.entities.length; i++) {
+        const entity = ontology.entities[i];
         try {
           const entityId = `${documentId}_entity_${entity.name.replace(/\s+/g, '_')}`;
           const embedding = await generateEmbedding(JSON.stringify(entity));
@@ -281,6 +323,16 @@ export class DocumentProcessor {
           
           entityNameToId.set(entity.name, entityId);
           entitySuccessCount++;
+          
+          // Update progress every 5 entities or on last entity
+          if (i % 5 === 0 || i === ontology.entities.length - 1) {
+            const progress = 70 + Math.floor((i / ontology.entities.length) * 15); // 70-85%
+            await updateDocumentStatus(documentId, 'processing', 'ontology', {
+              message: `Created ${entitySuccessCount}/${ontology.entities.length} entities`,
+              progress,
+              entitiesCreated: entitySuccessCount
+            });
+          }
         } catch (entityError) {
           entityErrorCount++;
           console.error(`[Ontology] Failed to create entity ${entity.name}:`, entityError instanceof Error ? entityError.message : entityError);
@@ -289,10 +341,17 @@ export class DocumentProcessor {
       
       console.log(`[Ontology] Entities: ${entitySuccessCount} created, ${entityErrorCount} failed`);
 
+      await updateDocumentStatus(documentId, 'processing', 'ontology', {
+        message: `Creating ${ontology.relationships.length} relationships...`,
+        progress: 85,
+        entitiesCreated: entitySuccessCount
+      });
+
       let relSuccessCount = 0;
       let relErrorCount = 0;
       
-      for (const relationship of ontology.relationships) {
+      for (let i = 0; i < ontology.relationships.length; i++) {
+        const relationship = ontology.relationships[i];
         try {
           const sourceId = entityNameToId.get(relationship.from) || 
             `${documentId}_entity_${relationship.from.replace(/\s+/g, '_')}`;
@@ -306,6 +365,17 @@ export class DocumentProcessor {
             relationship.properties || {}
           );
           relSuccessCount++;
+          
+          // Update progress every 5 relationships or on last relationship
+          if (i % 5 === 0 || i === ontology.relationships.length - 1) {
+            const progress = 85 + Math.floor((i / ontology.relationships.length) * 10); // 85-95%
+            await updateDocumentStatus(documentId, 'processing', 'ontology', {
+              message: `Created ${relSuccessCount}/${ontology.relationships.length} relationships`,
+              progress,
+              entitiesCreated: entitySuccessCount,
+              relationshipsCreated: relSuccessCount
+            });
+          }
         } catch (relError) {
           relErrorCount++;
           console.error(`[Ontology] Failed to create relationship ${relationship.from} -> ${relationship.to}:`, relError instanceof Error ? relError.message : relError);
@@ -313,6 +383,11 @@ export class DocumentProcessor {
       }
       
       console.log(`[Ontology] Relationships: ${relSuccessCount} created, ${relErrorCount} failed`);
+      
+      return {
+        entitiesCreated: entitySuccessCount,
+        relationshipsCreated: relSuccessCount
+      };
     } catch (error) {
       throw error;
     }

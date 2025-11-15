@@ -20,6 +20,12 @@ interface Document {
   fileId?: string;
   fileSize?: number;
   wordCount?: number;
+  progress?: number;
+  message?: string;
+  processedChunks?: number;
+  totalChunks?: number;
+  entitiesCreated?: number;
+  relationshipsCreated?: number;
 }
 
 interface UserInfo {
@@ -44,6 +50,7 @@ export default function DocumentList({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [setupRequired, setSetupRequired] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
 
   const fetchDocuments = async () => {
     try {
@@ -81,9 +88,53 @@ export default function DocumentList({
     }
   };
 
+  const cleanupStalledDocuments = async () => {
+    try {
+      setCleaningUp(true);
+      const response = await fetch('/api/documents?cleanup=true');
+      
+      if (!response.ok) {
+        throw new Error('Failed to cleanup documents');
+      }
+      
+      const data = await response.json();
+      
+      if (data.cleaned > 0) {
+        // Show success and refresh
+        await fetchDocuments();
+      }
+    } catch (err) {
+      console.error('Error cleaning up documents:', err);
+    } finally {
+      setCleaningUp(false);
+    }
+  };
+
   useEffect(() => {
     fetchDocuments();
   }, [refreshTrigger]);
+
+  // Auto-refresh only when documents are actively processing
+  useEffect(() => {
+    const hasProcessingDocs = documents.some(
+      doc => doc.status === 'processing' || doc.status === 'uploaded'
+    );
+    
+    if (hasProcessingDocs) {
+      const interval = setInterval(() => {
+        fetch('/api/documents')
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              setDocuments(data.documents || []);
+            }
+          })
+          .catch(err => console.error('Auto-refresh error:', err));
+      }, 3000); // Check every 3 seconds
+      
+      return () => clearInterval(interval);
+    }
+  }, [documents.some(d => d.status === 'processing' || d.status === 'uploaded')]);
 
   const getStatusIcon = (status: string, stage: string) => {
     switch (status) {
@@ -238,13 +289,27 @@ export default function DocumentList({
             <FileText className="w-5 h-5 text-primary" />
             Your Documents
           </h2>
-          <button
-            onClick={fetchDocuments}
-            className="p-2 rounded-lg text-primary hover:bg-primary/10 transition-colors"
-            title="Refresh documents"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={cleanupStalledDocuments}
+              disabled={cleaningUp}
+              className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+              title="Clean up stalled documents"
+            >
+              {cleaningUp ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+            </button>
+            <button
+              onClick={fetchDocuments}
+              className="p-2 rounded-lg text-primary hover:bg-primary/10 transition-colors"
+              title="Refresh documents"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </div>
         {user && (
           <div className="flex items-center space-x-2 mt-2">
@@ -307,21 +372,45 @@ export default function DocumentList({
                       </p>
                     )}
                     {(doc.status === 'processing' || doc.status === 'uploaded') && (
-                      <div className="mt-2">
+                      <div className="mt-2 space-y-2">
                         <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                           <div 
                             className={`h-full transition-all duration-500 ${
-                              doc.status === 'processing' ? 'bg-gradient-to-r from-primary to-accent' : 'bg-primary/60'
+                              doc.status === 'processing' ? 'bg-gradient-to-r from-primary to-accent animate-pulse' : 'bg-primary/60'
                             }`}
                             style={{
-                              width: `${getProcessingProgress(doc.status, doc.processingStage)}%`
+                              width: `${doc.progress ?? getProcessingProgress(doc.status, doc.processingStage)}%`
                             }}
                           ></div>
                         </div>
-                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                          <span className="font-medium">Pipeline: {doc.processingStage}</span>
-                          <span className="font-semibold text-primary">{getProcessingProgress(doc.status, doc.processingStage)}%</span>
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span className="font-medium">{doc.message || `Pipeline: ${doc.processingStage}`}</span>
+                          <span className="font-semibold text-primary">{doc.progress ?? getProcessingProgress(doc.status, doc.processingStage)}%</span>
                         </div>
+                        
+                        {/* Detailed progress information */}
+                        {(doc.processedChunks !== undefined || doc.entitiesCreated !== undefined || doc.relationshipsCreated !== undefined) && (
+                          <div className="grid grid-cols-3 gap-2 pt-1">
+                            {doc.processedChunks !== undefined && doc.totalChunks !== undefined && (
+                              <div className="rounded-lg bg-primary/10 px-2 py-1">
+                                <div className="text-[10px] text-muted-foreground font-medium">Chunks</div>
+                                <div className="text-xs text-foreground font-bold">{doc.processedChunks}/{doc.totalChunks}</div>
+                              </div>
+                            )}
+                            {doc.entitiesCreated !== undefined && (
+                              <div className="rounded-lg bg-accent/10 px-2 py-1">
+                                <div className="text-[10px] text-muted-foreground font-medium">Entities</div>
+                                <div className="text-xs text-foreground font-bold">{doc.entitiesCreated}</div>
+                              </div>
+                            )}
+                            {doc.relationshipsCreated !== undefined && (
+                              <div className="rounded-lg bg-primary/10 px-2 py-1">
+                                <div className="text-[10px] text-muted-foreground font-medium">Relations</div>
+                                <div className="text-xs text-foreground font-bold">{doc.relationshipsCreated}</div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                     {doc.status === 'completed' && (
