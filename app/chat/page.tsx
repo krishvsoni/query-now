@@ -9,12 +9,12 @@ import DocumentList from './components/DocumentList';
 import GraphVisualization from './components/GraphVisualization';
 import ChatHistory from './components/ChatHistory';
 import { 
-  ChatBubbleLeftRightIcon, 
-  DocumentTextIcon, 
-  CloudArrowUpIcon,
-  ShareIcon,
-  ClockIcon
-} from '@heroicons/react/24/outline';
+  MessageSquare, 
+  FileText, 
+  Upload,
+  Share2,
+  Clock
+} from 'lucide-react';
 
 export default function ChatPage() {
   const router = useRouter();
@@ -65,7 +65,7 @@ export default function ChatPage() {
     {
       id: 'chat',
       label: 'Chat',
-      icon: ChatBubbleLeftRightIcon,
+      icon: MessageSquare,
       component: (
         <div className="flex h-full">
           <div className="flex-1">
@@ -77,23 +77,24 @@ export default function ChatPage() {
             />
           </div>
           
-          <div className="w-80 border-l border-gray-200 bg-gray-50 p-4 overflow-y-auto">
+          <div className="w-80 border-l border-primary/20 bg-gradient-to-br from-card/50 to-card/20 backdrop-blur-sm p-4 overflow-y-auto">
             <div className="space-y-6">
               <div>
-                <h3 className="text-sm font-medium text-gray-900 mb-3">Upload Document</h3>
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-primary" />
+                  Upload Document
+                </h3>
                 <DocumentUpload 
                   onUploadComplete={handleUploadComplete}
                   onUploadStart={() => {}}
                 />
               </div>
-              <div className="bg-white rounded-lg p-4 border">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">Session Stats</h3>
-                <div className="space-y-2 text-sm text-gray-600">
+              <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md p-4">
+                <h3 className="text-sm font-semibold text-foreground mb-3">Session Stats</h3>
+                <div className="space-y-2 text-sm text-muted-foreground">
                   <div className="flex justify-between">
                     <span>Selected Documents:</span>
-                    <span>{selectedDocuments.length}</span>
-                  </div>
-                  <div className="flex justify-between">
+                    <span className="font-bold text-primary">{selectedDocuments.length}</span>
                   </div>
                 </div>
               </div>
@@ -102,10 +103,6 @@ export default function ChatPage() {
                 selectedDocuments={selectedDocuments}
                 refreshTrigger={refreshDocuments}
               />
-
- 
-
-
             </div>
           </div>
         </div>
@@ -114,26 +111,41 @@ export default function ChatPage() {
     {
       id: 'documents',
       label: 'Documents',
-      icon: DocumentTextIcon,
+      icon: FileText,
       component: (
         <div className="p-6 max-w-4xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Upload Section */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Upload New Document</h2>
+            <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md p-6 hover:border-primary/60 transition-all duration-300">
+              <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+                <Upload className="w-5 h-5 text-primary" />
+                Upload New Document
+              </h2>
               <DocumentUpload 
                 onUploadComplete={handleUploadComplete}
                 onUploadStart={() => {}}
               />
               
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                <h3 className="text-sm font-medium text-blue-900 mb-2">Supported Formats</h3>
-                <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• PDF documents (.pdf)</li>
-                  <li>• Word documents (.docx)</li>
-                  <li>• Plain text files (.txt)</li>
+              <div className="mt-6 p-4 rounded-xl border border-primary/20 bg-primary/10 backdrop-blur-sm">
+                <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-primary" />
+                  Supported Formats
+                </h3>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                    PDF documents (.pdf)
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                    Word documents (.docx)
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                    Plain text files (.txt)
+                  </li>
                 </ul>
-                <p className="text-xs text-blue-700 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   Maximum file size: 10MB
                 </p>
               </div>
@@ -146,35 +158,35 @@ export default function ChatPage() {
             />
           </div>
 
-          <div className="mt-8 bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">How Document Processing Works</h2>
+          <div className="mt-8 rounded-2xl border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md p-6">
+            <h2 className="text-lg font-bold text-foreground mb-4">How Document Processing Works</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="text-center">
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-3">
-                  <CloudArrowUpIcon className="h-6 w-6 text-blue-600" />
+              <div className="text-center p-4 rounded-xl border border-primary/20 bg-gradient-to-br from-card/40 to-card/10 hover:border-primary/50 transition-all duration-300">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center mx-auto mb-3">
+                  <Upload className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="font-medium text-gray-900 mb-2">1. Upload & Parse</h3>
-                <p className="text-sm text-gray-600">
+                <h3 className="font-semibold text-foreground mb-2">1. Upload & Parse</h3>
+                <p className="text-sm text-muted-foreground">
                   Your document is securely uploaded and text is extracted from PDF, DOCX, or TXT files.
                 </p>
               </div>
               
-              <div className="text-center">
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-3">
-                  <ShareIcon className="h-6 w-6 text-green-600" />
+              <div className="text-center p-4 rounded-xl border border-primary/20 bg-gradient-to-br from-card/40 to-card/10 hover:border-primary/50 transition-all duration-300">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center mx-auto mb-3">
+                  <Share2 className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="font-medium text-gray-900 mb-2">2. Create Knowledge Graph</h3>
-                <p className="text-sm text-gray-600">
+                <h3 className="font-semibold text-foreground mb-2">2. Create Knowledge Graph</h3>
+                <p className="text-sm text-muted-foreground">
                   AI identifies entities and relationships to build an interactive knowledge graph.
                 </p>
               </div>
               
-              <div className="text-center">
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-3">
-                  <ChatBubbleLeftRightIcon className="h-6 w-6 text-purple-600" />
+              <div className="text-center p-4 rounded-xl border border-primary/20 bg-gradient-to-br from-card/40 to-card/10 hover:border-primary/50 transition-all duration-300">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center mx-auto mb-3">
+                  <MessageSquare className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="font-medium text-gray-900 mb-2">3. Query & Chat</h3>
-                <p className="text-sm text-gray-600">
+                <h3 className="font-semibold text-foreground mb-2">3. Query & Chat</h3>
+                <p className="text-sm text-muted-foreground">
                   Ask questions and get intelligent answers powered by semantic search and graph reasoning.
                 </p>
               </div>
@@ -186,14 +198,16 @@ export default function ChatPage() {
     {
       id: 'upload',
       label: 'Upload',
-      icon: CloudArrowUpIcon,
+      icon: Upload,
       component: (
         <div className="flex items-center justify-center h-full p-6">
           <div className="max-w-md w-full">
             <div className="text-center mb-6">
-              <CloudArrowUpIcon className="h-16 w-16 text-blue-500 mx-auto mb-4" />
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Upload Documents</h1>
-              <p className="text-gray-600">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center mx-auto mb-4">
+                <Upload className="w-8 h-8 text-primary" />
+              </div>
+              <h1 className="text-3xl font-black text-foreground mb-2">Upload Documents</h1>
+              <p className="text-muted-foreground">
                 Add your documents to start building your knowledge base
               </p>
             </div>
@@ -217,28 +231,31 @@ export default function ChatPage() {
   ];
 
   return (
-    <div className="h-screen bg-gray-100 relative">
+    <div className="h-screen bg-background relative overflow-hidden">
+      <div className="pointer-events-none fixed w-96 h-96 rounded-full bg-gradient-to-br from-primary/20 to-accent/10 blur-3xl top-20 right-10 animate-float" />
+      <div className="pointer-events-none fixed w-80 h-80 rounded-full bg-gradient-to-br from-accent/15 to-primary/5 blur-3xl bottom-20 left-10 animate-float" style={{ animationDelay: '1s' }} />
+      
       <Tabs tabs={tabs} defaultTab="chat" />
       
       <div className="fixed bottom-6 right-6 flex flex-col space-y-3 z-40">
         <button
           onClick={() => setShowHistory(true)}
-          className="bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-full shadow-lg transition-all hover:scale-110 group"
+          className="group relative bg-gradient-to-r from-primary to-accent text-primary-foreground p-4 rounded-xl shadow-lg hover:shadow-2xl hover:shadow-primary/40 transition-all duration-300 hover:scale-110 border border-primary/50"
           title="View Chat History"
         >
-          <ClockIcon className="h-6 w-6" />
-          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-sm px-3 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+          <Clock className="w-6 h-6" />
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 bg-card border border-primary/30 text-foreground text-sm px-3 py-2 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none backdrop-blur-sm">
             Chat History
           </span>
         </button>
         
         <button
           onClick={handleShowCentralGraph}
-          className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-all hover:scale-110 group"
+          className="group relative bg-gradient-to-r from-primary to-accent text-primary-foreground p-4 rounded-xl shadow-lg hover:shadow-2xl hover:shadow-primary/40 transition-all duration-300 hover:scale-110 border border-primary/50"
           title="View Central Knowledge Graph"
         >
-          <ShareIcon className="h-6 w-6" />
-          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-sm px-3 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+          <Share2 className="w-6 h-6" />
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 bg-card border border-primary/30 text-foreground text-sm px-3 py-2 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none backdrop-blur-sm">
             Central Knowledge Graph
           </span>
         </button>

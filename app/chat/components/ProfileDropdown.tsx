@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { UserIcon, ArrowRightOnRectangleIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { User, LogOut, ChevronDown } from 'lucide-react';
 
 interface UserProfile {
   id: string;
@@ -64,7 +64,7 @@ export default function ProfileDropdown() {
     return (
       <div className="flex items-center space-x-2">
         <div className="animate-pulse">
-          <div className="h-8 w-8 bg-gray-300 rounded-full"></div>
+          <div className="h-8 w-8 bg-primary/20 rounded-full"></div>
         </div>
       </div>
     );
@@ -78,7 +78,7 @@ export default function ProfileDropdown() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="flex items-center space-x-2 px-3 py-2 rounded-xl hover:bg-primary/10 transition-all border border-primary/20 focus:outline-none focus:ring-2 focus:ring-primary"
       >
         {user.picture ? (
           <img
@@ -87,19 +87,19 @@ export default function ProfileDropdown() {
             className="h-8 w-8 rounded-full object-cover"
           />
         ) : (
-          <div className="h-8 w-8 bg-blue-500 rounded-full flex items-center justify-center">
-            <UserIcon className="h-5 w-5 text-white" />
+          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center">
+            <User className="w-4 h-4 text-primary" />
           </div>
         )}
-        <span className="text-sm font-medium text-gray-700 hidden sm:inline">
+        <span className="text-sm font-semibold text-foreground hidden sm:inline">
           {user.fullName || user.email}
         </span>
-        <ChevronDownIcon className={`h-4 w-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-          <div className="p-4 border-b border-gray-200">
+        <div className="absolute right-0 mt-2 w-64 rounded-xl border border-primary/30 bg-gradient-to-br from-card/95 to-card/90 backdrop-blur-xl shadow-2xl z-50">
+          <div className="p-4 border-b border-primary/20">
             <div className="flex items-center space-x-3">
               {user.picture ? (
                 <img
@@ -108,20 +108,20 @@ export default function ProfileDropdown() {
                   className="h-10 w-10 rounded-full object-cover"
                 />
               ) : (
-                <div className="h-10 w-10 bg-blue-500 rounded-full flex items-center justify-center">
-                  <UserIcon className="h-6 w-6 text-white" />
+                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center">
+                  <User className="w-5 h-5 text-primary" />
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-sm font-semibold text-foreground truncate">
                   {user.fullName || 'User'}
                 </p>
-                <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               </div>
             </div>
             {user.isVerified && (
               <div className="mt-2">
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-primary/20 text-primary border border-primary/30">
                   ✓ Verified
                 </span>
               </div>
@@ -131,9 +131,9 @@ export default function ProfileDropdown() {
           <div className="p-2">
             <button
               onClick={handleLogout}
-              className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-gray-700 rounded-md hover:bg-gray-100 transition-colors"
+              className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-foreground rounded-lg hover:bg-primary/10 transition-all font-semibold"
             >
-              <ArrowRightOnRectangleIcon className="h-5 w-5" />
+              <LogOut className="w-4 h-4 text-primary" />
               <span>Sign out</span>
             </button>
           </div>

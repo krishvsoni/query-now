@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  DocumentTextIcon, 
-  ClockIcon, 
-  CheckCircleIcon, 
-  ExclamationCircleIcon,
-  ArrowPathIcon,
-  TrashIcon,
-  UserIcon
-} from '@heroicons/react/24/outline';
+  FileText, 
+  Clock, 
+  CheckCircle, 
+  AlertCircle,
+  RefreshCw,
+  Trash2,
+  User
+} from 'lucide-react';
 
 interface Document {
   id: string;
@@ -88,13 +88,13 @@ export default function DocumentList({
   const getStatusIcon = (status: string, stage: string) => {
     switch (status) {
       case 'completed':
-        return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
+        return <CheckCircle className="w-5 h-5 text-primary" />;
       case 'processing':
-        return <ArrowPathIcon className="h-5 w-5 text-blue-500 animate-spin" />;
+        return <RefreshCw className="w-5 h-5 text-accent animate-spin" />;
       case 'error':
-        return <ExclamationCircleIcon className="h-5 w-5 text-red-500" />;
+        return <AlertCircle className="w-5 h-5 text-destructive" />;
       default:
-        return <ClockIcon className="h-5 w-5 text-yellow-500" />;
+        return <Clock className="w-5 h-5 text-primary/60" />;
     }
   };
 
@@ -150,16 +150,19 @@ export default function DocumentList({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Your Documents</h2>
+      <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md p-6">
+        <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+          <FileText className="w-5 h-5 text-primary" />
+          Your Documents
+        </h2>
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="animate-pulse">
               <div className="flex items-center space-x-3">
-                <div className="h-10 w-10 bg-gray-200 rounded"></div>
+                <div className="h-10 w-10 bg-primary/10 rounded-xl"></div>
                 <div className="flex-1">
-                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                  <div className="h-3 bg-gray-200 rounded w-1/4 mt-1"></div>
+                  <div className="h-4 bg-primary/10 rounded w-1/2"></div>
+                  <div className="h-3 bg-primary/10 rounded w-1/4 mt-1"></div>
                 </div>
               </div>
             </div>
@@ -171,26 +174,31 @@ export default function DocumentList({
 
   if (error && setupRequired) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Your Documents</h2>
+      <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md p-6">
+        <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+          <FileText className="w-5 h-5 text-primary" />
+          Your Documents
+        </h2>
         <div className="text-center py-6">
-          <ExclamationCircleIcon className="h-12 w-12 text-yellow-400 mx-auto mb-2" />
-          <p className="text-gray-900 font-medium mb-2">Database Setup Required</p>
-          <p className="text-gray-600 mb-4">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-primary" />
+          </div>
+          <p className="text-foreground font-semibold mb-2">Database Setup Required</p>
+          <p className="text-muted-foreground mb-4">
             To use document upload, you need to set up Appwrite database and collections.
           </p>
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left">
-            <h3 className="font-medium text-yellow-800 mb-2">Setup Instructions:</h3>
-            <ol className="text-sm text-yellow-700 space-y-1">
-              <li>1. Create database with ID: <code className="bg-yellow-100 px-1 rounded">main</code></li>
-              <li>2. Create collection with ID: <code className="bg-yellow-100 px-1 rounded">user_documents</code></li>
-              <li>3. Create storage bucket with ID: <code className="bg-yellow-100 px-1 rounded">documents</code></li>
-              <li>4. Configure your environment variables in <code className="bg-yellow-100 px-1 rounded">.env.local</code></li>
+          <div className="rounded-xl border border-primary/20 bg-primary/10 backdrop-blur-sm p-4 text-left">
+            <h3 className="font-semibold text-foreground mb-2">Setup Instructions:</h3>
+            <ol className="text-sm text-muted-foreground space-y-1">
+              <li>1. Create database with ID: <code className="bg-primary/20 px-2 py-0.5 rounded text-foreground">main</code></li>
+              <li>2. Create collection with ID: <code className="bg-primary/20 px-2 py-0.5 rounded text-foreground">user_documents</code></li>
+              <li>3. Create storage bucket with ID: <code className="bg-primary/20 px-2 py-0.5 rounded text-foreground">documents</code></li>
+              <li>4. Configure your environment variables in <code className="bg-primary/20 px-2 py-0.5 rounded text-foreground">.env.local</code></li>
             </ol>
           </div>
           <button
             onClick={fetchDocuments}
-            className="mt-4 text-blue-600 hover:text-blue-800 text-sm"
+            className="mt-4 text-primary hover:text-accent text-sm font-semibold transition-colors"
           >
             Try again after setup
           </button>
@@ -201,14 +209,19 @@ export default function DocumentList({
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Your Documents</h2>
+      <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md p-6">
+        <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+          <FileText className="w-5 h-5 text-primary" />
+          Your Documents
+        </h2>
         <div className="text-center py-6">
-          <ExclamationCircleIcon className="h-12 w-12 text-red-400 mx-auto mb-2" />
-          <p className="text-gray-600">{error}</p>
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-destructive/40 to-destructive/20 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-destructive" />
+          </div>
+          <p className="text-muted-foreground">{error}</p>
           <button
             onClick={fetchDocuments}
-            className="mt-2 text-blue-600 hover:text-blue-800 text-sm"
+            className="mt-2 text-primary hover:text-accent text-sm font-semibold transition-colors"
           >
             Try again
           </button>
@@ -218,25 +231,28 @@ export default function DocumentList({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow">
-      <div className="px-6 py-4 border-b border-gray-200">
+    <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md overflow-hidden">
+      <div className="px-6 py-4 border-b border-primary/20">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-medium text-gray-900">Your Documents</h2>
+          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <FileText className="w-5 h-5 text-primary" />
+            Your Documents
+          </h2>
           <button
             onClick={fetchDocuments}
-            className="p-1 text-gray-500 hover:text-gray-700"
+            className="p-2 rounded-lg text-primary hover:bg-primary/10 transition-colors"
             title="Refresh documents"
           >
-            <ArrowPathIcon className="h-5 w-5" />
+            <RefreshCw className="w-4 h-4" />
           </button>
         </div>
         {user && (
           <div className="flex items-center space-x-2 mt-2">
-            <UserIcon className="h-4 w-4 text-gray-400" />
-            <span className="text-sm text-gray-600">{user.fullName || user.email}</span>
+            <User className="w-4 h-4 text-primary" />
+            <span className="text-sm text-muted-foreground font-medium">{user.fullName || user.email}</span>
           </div>
         )}
-        <p className="text-sm text-gray-600 mt-1">
+        <p className="text-sm text-muted-foreground mt-1">
           {documents.length} document{documents.length !== 1 ? 's' : ''} uploaded
         </p>
       </div>
@@ -244,19 +260,21 @@ export default function DocumentList({
       <div className="max-h-96 overflow-y-auto">
         {documents.length === 0 ? (
           <div className="p-6 text-center">
-            <DocumentTextIcon className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-            <p className="text-gray-600">No documents uploaded yet</p>
-            <p className="text-sm text-gray-500 mt-1">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-8 h-8 text-primary" />
+            </div>
+            <p className="text-foreground font-semibold">No documents uploaded yet</p>
+            <p className="text-sm text-muted-foreground mt-1">
               Upload your first document to start building your knowledge base
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-primary/10">
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
-                  selectedDocuments.includes(doc.id) ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+                className={`p-4 hover:bg-primary/5 cursor-pointer transition-all ${
+                  selectedDocuments.includes(doc.id) ? 'bg-primary/10 border-l-4 border-l-primary shadow-inner' : ''
                 }`}
                 onClick={() => handleDocumentClick(doc.id)}
               >
@@ -266,58 +284,58 @@ export default function DocumentList({
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <p className="text-sm font-semibold text-foreground truncate">
                         {doc.fileName}
                       </p>
                       {doc.fileSize && (
-                        <span className="text-xs text-gray-500 ml-2">
+                        <span className="text-xs text-muted-foreground ml-2">
                           {formatFileSize(doc.fileSize)}
                         </span>
                       )}
                     </div>
                     <div className="flex items-center justify-between mt-1">
-                      <span className="text-xs text-gray-600">
+                      <span className="text-xs text-muted-foreground font-medium">
                         {getStatusText(doc.status, doc.processingStage)}
                       </span>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-muted-foreground">
                         {formatDate(doc.uploadedAt)}
                       </span>
                     </div>
                     {doc.wordCount && (
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                          {doc.wordCount.toLocaleString()} words processed
                       </p>
                     )}
                     {(doc.status === 'processing' || doc.status === 'uploaded') && (
                       <div className="mt-2">
-                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                           <div 
                             className={`h-full transition-all duration-500 ${
-                              doc.status === 'processing' ? 'bg-blue-500' : 'bg-yellow-500'
+                              doc.status === 'processing' ? 'bg-gradient-to-r from-primary to-accent' : 'bg-primary/60'
                             }`}
                             style={{
                               width: `${getProcessingProgress(doc.status, doc.processingStage)}%`
                             }}
                           ></div>
                         </div>
-                        <div className="flex justify-between text-xs text-gray-500 mt-1">
-                          <span>Pipeline: {doc.processingStage}</span>
-                          <span>{getProcessingProgress(doc.status, doc.processingStage)}%</span>
+                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                          <span className="font-medium">Pipeline: {doc.processingStage}</span>
+                          <span className="font-semibold text-primary">{getProcessingProgress(doc.status, doc.processingStage)}%</span>
                         </div>
                       </div>
                     )}
                     {doc.status === 'completed' && (
                       <div className="mt-2 flex items-center space-x-1">
-                        <CheckCircleIcon className="h-3 w-3 text-green-500" />
-                        <span className="text-xs text-green-600">
+                        <CheckCircle className="w-3 h-3 text-primary" />
+                        <span className="text-xs text-primary font-semibold">
                           Ready for queries 
                         </span>
                       </div>
                     )}
                     {doc.status === 'error' && (
                       <div className="mt-2 flex items-center space-x-1">
-                        <ExclamationCircleIcon className="h-3 w-3 text-red-500" />
-                        <span className="text-xs text-red-600">
+                        <AlertCircle className="w-3 h-3 text-destructive" />
+                        <span className="text-xs text-destructive font-semibold">
                           Processing failed • Click to retry
                         </span>
                       </div>

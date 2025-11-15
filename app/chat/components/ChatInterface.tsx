@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { PaperAirplaneIcon, DocumentTextIcon, BeakerIcon, UserIcon } from '@heroicons/react/24/outline';
-import { LightBulbIcon, CogIcon, EyeIcon, CheckCircleIcon } from '@heroicons/react/24/solid';
+import { Send, FileText, Lightbulb, Cog, Eye, CheckCircle, User, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ResponseGraph from './ResponseGraph';
@@ -265,23 +264,23 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
     const getStepIcon = (type: string) => {
       switch (type) {
         case 'thought':
-          return <LightBulbIcon className="h-4 w-4 text-yellow-500" />;
+          return <Lightbulb className="w-4 h-4 text-primary" />;
         case 'action':
-          return <CogIcon className="h-4 w-4 text-blue-500" />;
+          return <Cog className="w-4 h-4 text-accent" />;
         case 'observation':
-          return <EyeIcon className="h-4 w-4 text-purple-500" />;
+          return <Eye className="w-4 h-4 text-primary" />;
         case 'conclusion':
-          return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
+          return <CheckCircle className="w-4 h-4 text-primary" />;
         default:
           return null;
       }
     };
 
     return (
-      <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+      <div className="mt-3 p-3 rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 to-accent/5 backdrop-blur-sm">
         <div className="flex items-center justify-between mb-2">
-          <h4 className="text-sm font-medium text-gray-700">Reasoning Chain</h4>
-          <span className="text-xs text-gray-500">{steps.length} steps</span>
+          <h4 className="text-sm font-semibold text-foreground">Reasoning Chain</h4>
+          <span className="text-xs text-muted-foreground">{steps.length} steps</span>
         </div>
         <div className="space-y-2 max-h-60 overflow-y-auto">
           {steps.map((step, index) => (
@@ -291,14 +290,14 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
               </div>
               <div className="flex-1">
                 <div className="flex items-center space-x-2">
-                  <span className="font-medium text-gray-700 capitalize">{step.type}</span>
+                  <span className="font-semibold text-foreground capitalize">{step.type}</span>
                   {step.confidence && (
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-muted-foreground">
                       ({Math.round(step.confidence * 100)}%)
                     </span>
                   )}
                 </div>
-                <p className="text-gray-600 mt-0.5">{step.content}</p>
+                <p className="text-muted-foreground mt-0.5">{step.content}</p>
               </div>
             </div>
           ))}
@@ -311,26 +310,26 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
     if (!sources || sources.length === 0) return null;
 
     return (
-      <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
-        <h4 className="text-sm font-medium text-gray-700 mb-2">Sources:</h4>
+      <div className="mt-3 p-3 rounded-xl border border-primary/20 bg-card/50 backdrop-blur-sm">
+        <h4 className="text-sm font-semibold text-foreground mb-2">Sources:</h4>
         <div className="space-y-2">
           {sources.map((source, index) => (
             <div key={index} className="flex items-start space-x-2 text-xs">
-              <DocumentTextIcon className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" />
+              <FileText className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
               <div>
-                <span className="font-medium text-gray-600">{source.fileName}</span>
+                <span className="font-semibold text-foreground">{source.fileName}</span>
                 {source.type === 'vector' && source.score && (
-                  <span className="ml-2 text-gray-500">
+                  <span className="ml-2 text-muted-foreground">
                     (Relevance: {Math.round(source.score * 100)}%)
                   </span>
                 )}
                 {source.type === 'graph' && source.entity && (
-                  <span className="ml-2 text-blue-600">
+                  <span className="ml-2 text-primary">
                     Entity: {source.entity} ({source.entityType})
                   </span>
                 )}
                 {source.content && (
-                  <p className="text-gray-500 mt-1">{source.content}</p>
+                  <p className="text-muted-foreground mt-1">{source.content}</p>
                 )}
               </div>
             </div>
@@ -341,12 +340,15 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200">
+    <div className="flex flex-col h-full bg-gradient-to-br from-background to-card/20">
+      <div className="flex-shrink-0 px-6 py-4 border-b border-primary/20 backdrop-blur-sm bg-card/50">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Query Documents</h1>
-            <p className="text-sm text-gray-600">
+            <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
+              <Zap className="w-5 h-5 text-primary" />
+              Query Documents
+            </h1>
+            <p className="text-sm text-muted-foreground">
               {selectedDocuments.length > 0 
                 ? `Searching ${selectedDocuments.length} selected document${selectedDocuments.length > 1 ? 's' : ''}`
                 : 'Select documents from the sidebar to search or search all documents'}
@@ -358,18 +360,18 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                 type="checkbox"
                 checked={useAdvancedReasoning}
                 onChange={(e) => setUseAdvancedReasoning(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-primary/40 text-primary focus:ring-primary"
               />
-              <span className="text-gray-700">Advanced Reasoning</span>
+              <span className="text-foreground font-medium">Advanced Reasoning</span>
             </label>
             <label className="flex items-center space-x-2 text-sm">
               <input
                 type="checkbox"
                 checked={showReasoning}
                 onChange={(e) => setShowReasoning(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-primary/40 text-primary focus:ring-primary"
               />
-              <span className="text-gray-700">Show Reasoning</span>
+              <span className="text-foreground font-medium">Show Reasoning</span>
             </label>
             <ProfileDropdown />
           </div>
@@ -379,13 +381,15 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-center py-12">
-            <BeakerIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/40 to-accent/20 flex items-center justify-center mx-auto mb-4">
+              <Zap className="w-8 h-8 text-primary" />
+            </div>
+            <p className="text-foreground font-semibold text-lg mb-2">
               Upload some documents and start asking questions!
             </p>
-            <div className="mt-4 text-sm text-gray-500">
-              
-            </div>
+            <p className="text-muted-foreground text-sm">
+              Select documents from the sidebar or upload new ones to begin
+            </p>
           </div>
         )}
 
@@ -397,17 +401,17 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
             }`}
           >
             <div
-              className={`max-w-2xl px-4 py-2 rounded-lg ${
+              className={`max-w-2xl px-4 py-3 rounded-xl ${
                 message.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-900'
+                  ? 'bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-lg shadow-primary/20'
+                  : 'border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md text-foreground'
               }`}
             >
               {message.role === 'assistant' && 
                message.knowledgeGraph && 
                message.knowledgeGraph.nodes && 
                message.knowledgeGraph.nodes.length > 0 && (
-                <div className="mb-2 inline-flex items-center gap-1 text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full font-medium">
+                <div className="mb-2 inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-primary/20 text-primary font-semibold">
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                   </svg>
@@ -415,53 +419,53 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                 </div>
               )}
               {message.role === 'assistant' ? (
-                <div className="prose prose-sm max-w-none prose-invert">
+                <div className="prose prose-sm max-w-none">
                   <ReactMarkdown 
                     remarkPlugins={[remarkGfm]}
                     components={{
                       code: ({node, inline, className, children, ...props}: any) => {
                         return inline ? (
-                          <code className="bg-gray-800 text-gray-100 px-1 py-0.5 rounded text-sm" {...props}>
+                          <code className="bg-muted text-foreground px-1 py-0.5 rounded text-sm" {...props}>
                             {children}
                           </code>
                         ) : (
-                          <code className="block bg-gray-800 text-gray-100 p-3 rounded-lg overflow-x-auto text-sm" {...props}>
+                          <code className="block bg-muted text-foreground p-3 rounded-lg overflow-x-auto text-sm" {...props}>
                             {children}
                           </code>
                         );
                       },
                       pre: ({children}: any) => <div className="my-2">{children}</div>,
-                      p: ({children}: any) => <p className="mb-2 last:mb-0 text-gray-900">{children}</p>,
-                      ul: ({children}: any) => <ul className="list-disc list-inside mb-2 text-gray-900">{children}</ul>,
-                      ol: ({children}: any) => <ol className="list-decimal list-inside mb-2 text-gray-900">{children}</ol>,
-                      li: ({children}: any) => <li className="mb-1 text-gray-900">{children}</li>,
-                      h1: ({children}: any) => <h1 className="text-xl font-bold mb-2 text-gray-900">{children}</h1>,
-                      h2: ({children}: any) => <h2 className="text-lg font-bold mb-2 text-gray-900">{children}</h2>,
-                      h3: ({children}: any) => <h3 className="text-base font-bold mb-2 text-gray-900">{children}</h3>,
+                      p: ({children}: any) => <p className="mb-2 last:mb-0 text-foreground">{children}</p>,
+                      ul: ({children}: any) => <ul className="list-disc list-inside mb-2 text-foreground">{children}</ul>,
+                      ol: ({children}: any) => <ol className="list-decimal list-inside mb-2 text-foreground">{children}</ol>,
+                      li: ({children}: any) => <li className="mb-1 text-foreground">{children}</li>,
+                      h1: ({children}: any) => <h1 className="text-xl font-bold mb-2 text-foreground">{children}</h1>,
+                      h2: ({children}: any) => <h2 className="text-lg font-bold mb-2 text-foreground">{children}</h2>,
+                      h3: ({children}: any) => <h3 className="text-base font-bold mb-2 text-foreground">{children}</h3>,
                       blockquote: ({children}: any) => (
-                        <blockquote className="border-l-4 border-gray-400 pl-3 italic text-gray-700 my-2">
+                        <blockquote className="border-l-4 border-primary pl-3 italic text-muted-foreground my-2">
                           {children}
                         </blockquote>
                       ),
                       a: ({children, href}: any) => (
-                        <a href={href} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                        <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
                           {children}
                         </a>
                       ),
                       table: ({children}: any) => (
                         <div className="overflow-x-auto my-2">
-                          <table className="min-w-full border-collapse border border-gray-300">
+                          <table className="min-w-full border-collapse border border-primary/30">
                             {children}
                           </table>
                         </div>
                       ),
                       th: ({children}: any) => (
-                        <th className="border border-gray-300 px-3 py-2 bg-gray-200 font-semibold text-left text-gray-900">
+                        <th className="border border-primary/30 px-3 py-2 bg-primary/10 font-semibold text-left text-foreground">
                           {children}
                         </th>
                       ),
                       td: ({children}: any) => (
-                        <td className="border border-gray-300 px-3 py-2 text-gray-900">
+                        <td className="border border-primary/30 px-3 py-2 text-foreground">
                           {children}
                         </td>
                       ),
@@ -471,7 +475,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                   </ReactMarkdown>
                 </div>
               ) : (
-                <div className="whitespace-pre-wrap">{message.content}</div>
+                <div className="whitespace-pre-wrap font-medium">{message.content}</div>
               )}
               {message.role === 'assistant' && showReasoning && message.reasoningChain && 
                 renderReasoningChain(message.reasoningChain)}
@@ -490,7 +494,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                         setResponseGraphQuery(userQuery || 'Query Response');
                         setShowResponseGraph(true);
                       }}
-                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 rounded-lg font-medium transition-all shadow-sm hover:shadow-md"
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gradient-to-r from-primary to-accent text-primary-foreground hover:shadow-lg hover:shadow-primary/40 rounded-lg font-semibold transition-all border border-primary/50"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
@@ -501,16 +505,16 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                   {showReasoning && message.sources && message.sources.length > 0 && (
                     <button
                       onClick={() => setShowReasoning(false)}
-                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-primary/30 bg-card/50 text-foreground hover:bg-card/80 rounded-lg font-semibold transition-all"
                     >
-                      <DocumentTextIcon className="w-4 h-4" />
+                      <FileText className="w-4 h-4" />
                       Show Sources ({message.sources.length})
                     </button>
                   )}
                   {!message.knowledgeGraph && message.sources && message.sources.length > 0 && (
                     <button
                       onClick={() => onShowGraph?.('', 'central')}
-                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg font-medium transition-colors"
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 rounded-lg font-semibold transition-all"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
@@ -526,7 +530,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
 
         {(streamingMessage || thinkingStatus) && (
           <div className="flex justify-start">
-            <div className="max-w-2xl px-4 py-2 rounded-lg bg-gray-100 text-gray-900">
+            <div className="max-w-2xl px-4 py-3 rounded-xl border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md text-foreground">
               {streamingMessage && (
                 <div className="prose prose-sm max-w-none">
                   <ReactMarkdown 
@@ -534,47 +538,47 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                     components={{
                       code: ({node, inline, className, children, ...props}: any) => {
                         return inline ? (
-                          <code className="bg-gray-800 text-gray-100 px-1 py-0.5 rounded text-sm" {...props}>
+                          <code className="bg-muted text-foreground px-1 py-0.5 rounded text-sm" {...props}>
                             {children}
                           </code>
                         ) : (
-                          <code className="block bg-gray-800 text-gray-100 p-3 rounded-lg overflow-x-auto text-sm" {...props}>
+                          <code className="block bg-muted text-foreground p-3 rounded-lg overflow-x-auto text-sm" {...props}>
                             {children}
                           </code>
                         );
                       },
                       pre: ({children}: any) => <div className="my-2">{children}</div>,
-                      p: ({children}: any) => <p className="mb-2 last:mb-0 text-gray-900">{children}</p>,
-                      ul: ({children}: any) => <ul className="list-disc list-inside mb-2 text-gray-900">{children}</ul>,
-                      ol: ({children}: any) => <ol className="list-decimal list-inside mb-2 text-gray-900">{children}</ol>,
-                      li: ({children}: any) => <li className="mb-1 text-gray-900">{children}</li>,
-                      h1: ({children}: any) => <h1 className="text-xl font-bold mb-2 text-gray-900">{children}</h1>,
-                      h2: ({children}: any) => <h2 className="text-lg font-bold mb-2 text-gray-900">{children}</h2>,
-                      h3: ({children}: any) => <h3 className="text-base font-bold mb-2 text-gray-900">{children}</h3>,
+                      p: ({children}: any) => <p className="mb-2 last:mb-0 text-foreground">{children}</p>,
+                      ul: ({children}: any) => <ul className="list-disc list-inside mb-2 text-foreground">{children}</ul>,
+                      ol: ({children}: any) => <ol className="list-decimal list-inside mb-2 text-foreground">{children}</ol>,
+                      li: ({children}: any) => <li className="mb-1 text-foreground">{children}</li>,
+                      h1: ({children}: any) => <h1 className="text-xl font-bold mb-2 text-foreground">{children}</h1>,
+                      h2: ({children}: any) => <h2 className="text-lg font-bold mb-2 text-foreground">{children}</h2>,
+                      h3: ({children}: any) => <h3 className="text-base font-bold mb-2 text-foreground">{children}</h3>,
                       blockquote: ({children}: any) => (
-                        <blockquote className="border-l-4 border-gray-400 pl-3 italic text-gray-700 my-2">
+                        <blockquote className="border-l-4 border-primary pl-3 italic text-muted-foreground my-2">
                           {children}
                         </blockquote>
                       ),
                       a: ({children, href}: any) => (
-                        <a href={href} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                        <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
                           {children}
                         </a>
                       ),
                       table: ({children}: any) => (
                         <div className="overflow-x-auto my-2">
-                          <table className="min-w-full border-collapse border border-gray-300">
+                          <table className="min-w-full border-collapse border border-primary/30">
                             {children}
                           </table>
                         </div>
                       ),
                       th: ({children}: any) => (
-                        <th className="border border-gray-300 px-3 py-2 bg-gray-200 font-semibold text-left text-gray-900">
+                        <th className="border border-primary/30 px-3 py-2 bg-primary/10 font-semibold text-left text-foreground">
                           {children}
                         </th>
                       ),
                       td: ({children}: any) => (
-                        <td className="border border-gray-300 px-3 py-2 text-gray-900">
+                        <td className="border border-primary/30 px-3 py-2 text-foreground">
                           {children}
                         </td>
                       ),
@@ -588,15 +592,15 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
               <div className="mt-2 flex items-center space-x-2">
                 {thinkingStatus && (
                   <div className="flex items-center space-x-2">
-                    <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                    <span className="animate-pulse text-xs text-blue-600 font-medium">{thinkingStatus}</span>
+                    <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full"></div>
+                    <span className="animate-pulse text-xs text-primary font-semibold">{thinkingStatus}</span>
                   </div>
                 )}
                 {!thinkingStatus && streamingMessage && (
-                  <div className="animate-pulse text-xs text-gray-500">Generating response...</div>
+                  <div className="animate-pulse text-xs text-muted-foreground">Generating response...</div>
                 )}
                 {showReasoning && currentReasoningSteps.length > 0 && (
-                  <span className="text-xs text-blue-600">
+                  <span className="text-xs text-primary font-semibold">
                     ({currentReasoningSteps.length} steps)
                   </span>
                 )}
@@ -608,21 +612,21 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200">
+      <div className="flex-shrink-0 px-6 py-4 border-t border-primary/20 backdrop-blur-sm bg-card/30">
         <form onSubmit={handleSubmit} className="flex space-x-3">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question about your documents..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-black focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="flex-1 px-4 py-3 border border-primary/30 rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-primary transition-all"
             disabled={isLoading}
           />
           {isLoading ? (
             <button
               type="button"
               onClick={handleStop}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              className="px-6 py-3 bg-destructive text-destructive-foreground rounded-xl hover:bg-destructive/90 font-semibold transition-all shadow-lg hover:shadow-xl"
             >
               Stop
             </button>
@@ -630,9 +634,9 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
             <button
               type="submit"
               disabled={!input.trim()}
-              className="px-4 py-2 bg-blue-600  rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 bg-gradient-to-r from-primary to-accent text-primary-foreground rounded-xl hover:shadow-lg hover:shadow-primary/40 disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all border border-primary/50"
             >
-              <PaperAirplaneIcon className="h-5 w-5" />
+              <Send className="w-5 h-5" />
             </button>
           )}
         </form>
