@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, FileText, Lightbulb, Cog, Eye, CheckCircle, User, Zap } from 'lucide-react';
+import { Send, FileText, Lightbulb, Cog, Eye, CheckCircle, User, Zap, Search, Globe, Link, BarChart3, Sparkles, CheckCheck, Target, Brain } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ResponseGraph from './ResponseGraph';
@@ -56,6 +56,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
   const [showReasoning, setShowReasoning] = useState(true);
   const [useAdvancedReasoning, setUseAdvancedReasoning] = useState(true);
   const [thinkingStatus, setThinkingStatus] = useState('');
+  const [progressLogs, setProgressLogs] = useState<Array<{ type: string; message: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -69,7 +70,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, streamingMessage]);
+  }, [messages, streamingMessage, progressLogs, thinkingStatus]);
 
   useEffect(() => {
     if (loadedMessages && loadedMessages.length > 0) {
@@ -110,7 +111,8 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
     setStreamingMessage('');
     setCurrentReasoningSteps([]);
     setCurrentKnowledgeGraph(null);
-    setThinkingStatus('Initializing...');
+    setThinkingStatus('');
+    setProgressLogs([]);
 
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -119,6 +121,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
     abortControllerRef.current = new AbortController();
 
     try {
+      console.log('Sending query:', userMessage.content);
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -133,8 +136,12 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
         signal: abortControllerRef.current.signal
       });
 
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Response error:', errorText);
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
 
       const reader = response.body?.getReader();
@@ -142,6 +149,8 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
         throw new Error('No response body');
       }
 
+      console.log('Starting to read stream...');
+      
       let assistantMessage = '';
       let sources: Source[] = [];
       const reasoningSteps: ReasoningStep[] = [];
@@ -152,9 +161,13 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            console.log('Stream reading complete');
+            break;
+          }
 
           const chunk = new TextDecoder().decode(value);
+          console.log('Received raw chunk:', chunk);
           partialData += chunk;
           const lines = partialData.split('\n');
           partialData = lines.pop() || '';
@@ -181,22 +194,47 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
               }
               try {
                 const parsed = JSON.parse(data);
+                console.log('Parsed chunk:', parsed.type, parsed);
+                
                 if (parsed.type === 'thinking') {
-                  setThinkingStatus(parsed.message || 'Thinking...');
+                  const msg = parsed.message || 'Thinking...';
+                  setThinkingStatus(msg);
+                  // Replace last progress log if it's also a thinking type, otherwise add new
+                  setProgressLogs(prev => {
+                    const lastLog = prev[prev.length - 1];
+                    if (lastLog && lastLog.type === 'brain') {
+                      return [...prev.slice(0, -1), { type: 'brain', message: msg.replace(/🔍\s*/, '') }];
+                    }
+                    return [...prev, { type: 'brain', message: msg.replace(/🔍\s*/, '') }];
+                  });
                 } else if (parsed.type === 'chunk' && parsed.content) {
                   assistantMessage += parsed.content;
                   setStreamingMessage(assistantMessage);
-                  setThinkingStatus('');
+                  if (thinkingStatus) {
+                    setProgressLogs(prev => [...prev, { type: 'checkcheck', message: 'Starting to generate response' }]);
+                    setThinkingStatus('');
+                  }
                 } else if (parsed.type === 'sources') {
                   sources = parsed.sources || [];
+                  setProgressLogs(prev => [...prev, { type: 'check', message: `Found ${sources.length} relevant sources` }]);
                 } else if (parsed.type === 'reasoning') {
                   reasoningSteps.push(parsed.step);
                   setCurrentReasoningSteps([...reasoningSteps]);
-                  setThinkingStatus(`Processing step ${reasoningSteps.length}...`);
+                  const stepType = parsed.step.type;
+                  const friendlyMessage = stepType === 'thought' ? 'Analyzing context' :
+                                         stepType === 'action' ? 'Executing search' :
+                                         stepType === 'observation' ? 'Reviewing results' :
+                                         stepType === 'conclusion' ? 'Drawing conclusions' : 'Processing';
+                  setProgressLogs(prev => [...prev, { type: stepType, message: friendlyMessage }]);
                 } else if (parsed.type === 'tool') {
-                  setThinkingStatus(`Executing ${parsed.tool.tool}...`);
+                  const toolName = parsed.tool.tool;
+                  const friendlyTool = toolName === 'vector_search' ? { type: 'search', message: 'Searching documents' } :
+                                      toolName === 'entity_search' ? { type: 'globe', message: 'Finding related concepts' } :
+                                      toolName === 'relationship_path' ? { type: 'link', message: 'Mapping connections' } :
+                                      toolName === 'graph_traversal' ? { type: 'chart', message: 'Exploring knowledge graph' } : { type: 'cog', message: `Running ${toolName}` };
+                  setProgressLogs(prev => [...prev, friendlyTool]);
                 } else if (parsed.type === 'refinement') {
-                  setThinkingStatus('Refining answer...');
+                  setProgressLogs(prev => [...prev, { type: 'sparkles', message: 'Refining response' }]);
                 }
               } catch (parseError) {
               }
@@ -231,13 +269,16 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
       setStreamingMessage('');
       setCurrentReasoningSteps([]);
       setThinkingStatus('');
+      setProgressLogs([]);
 
     } catch (error) {
+      console.error('Chat error:', error);
       if ((error as Error).name !== 'AbortError') {
+        const errorDetails = error instanceof Error ? error.message : 'Unknown error';
         const errorMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: 'Sorry, I encountered an error while processing your request. Please try again.',
+          content: `Sorry, I encountered an error while processing your request: ${errorDetails}\n\nPlease make sure you have uploaded documents and try again.`,
           timestamp: Date.now()
         };
         setMessages(prev => [...prev, errorMessage]);
@@ -246,6 +287,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
       setIsLoading(false);
       setStreamingMessage('');
       setThinkingStatus('');
+      setProgressLogs([]);
     }
   };
 
@@ -255,6 +297,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
       setIsLoading(false);
       setStreamingMessage('');
       setThinkingStatus('');
+      setProgressLogs([]);
     }
   };
 
@@ -528,83 +571,78 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
           </div>
         ))}
 
-        {(streamingMessage || thinkingStatus) && (
+        {(isLoading && !messages.find(m => m.role === 'assistant' && messages.indexOf(m) === messages.length - 1)) && (
           <div className="flex justify-start">
             <div className="max-w-2xl px-4 py-3 rounded-xl border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md text-foreground">
+              
+              {/* Show progress logs if any */}
+              {progressLogs.length > 0 ? (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {progressLogs.map((log, idx) => {
+                    const IconComponent = 
+                      log.type === 'thought' ? Brain :
+                      log.type === 'action' ? Cog :
+                      log.type === 'observation' ? Eye :
+                      log.type === 'conclusion' ? CheckCircle :
+                      log.type === 'search' ? Search :
+                      log.type === 'globe' ? Globe :
+                      log.type === 'link' ? Link :
+                      log.type === 'chart' ? BarChart3 :
+                      log.type === 'sparkles' ? Sparkles :
+                      log.type === 'check' ? CheckCircle :
+                      log.type === 'checkcheck' ? CheckCheck :
+                      log.type === 'target' ? Target :
+                      log.type === 'brain' ? Brain : Lightbulb;
+                    
+                    return (
+                      <div 
+                        key={idx} 
+                        className="flex items-center space-x-2 text-xs animate-fade-in"
+                        style={{ 
+                          animation: `fadeIn 0.3s ease-in`,
+                          animationDelay: `${idx * 0.05}s`,
+                          opacity: idx === progressLogs.length - 1 ? 1 : 0.6
+                        }}
+                      >
+                        <IconComponent className={`w-3.5 h-3.5 flex-shrink-0 ${
+                          idx === progressLogs.length - 1 ? 'text-primary' : 'text-muted-foreground/60'
+                        }`} />
+                        <span className={idx === progressLogs.length - 1 ? 'text-foreground font-medium' : 'text-muted-foreground/70'}>
+                          {log.message}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex items-center space-x-3 p-3">
+                  <div className="relative">
+                    <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
+                    <div className="absolute inset-0 animate-ping h-5 w-5 border-2 border-primary/30 rounded-full"></div>
+                  </div>
+                  <span className="text-sm text-primary font-medium">Processing your query...</span>
+                </div>
+              )}
+              
+              {/* Show thinking status if present */}
+              {thinkingStatus && (
+                <div className="mt-3 flex items-center space-x-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                  <div className="relative">
+                    <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
+                    <div className="absolute inset-0 animate-ping h-5 w-5 border-2 border-primary/30 rounded-full"></div>
+                  </div>
+                  <span className="text-sm text-primary font-medium">{thinkingStatus}</span>
+                </div>
+              )}
+              
+              {/* Show streaming message if present */}
               {streamingMessage && (
-                <div className="prose prose-sm max-w-none">
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      code: ({node, inline, className, children, ...props}: any) => {
-                        return inline ? (
-                          <code className="bg-muted text-foreground px-1 py-0.5 rounded text-sm" {...props}>
-                            {children}
-                          </code>
-                        ) : (
-                          <code className="block bg-muted text-foreground p-3 rounded-lg overflow-x-auto text-sm" {...props}>
-                            {children}
-                          </code>
-                        );
-                      },
-                      pre: ({children}: any) => <div className="my-2">{children}</div>,
-                      p: ({children}: any) => <p className="mb-2 last:mb-0 text-foreground">{children}</p>,
-                      ul: ({children}: any) => <ul className="list-disc list-inside mb-2 text-foreground">{children}</ul>,
-                      ol: ({children}: any) => <ol className="list-decimal list-inside mb-2 text-foreground">{children}</ol>,
-                      li: ({children}: any) => <li className="mb-1 text-foreground">{children}</li>,
-                      h1: ({children}: any) => <h1 className="text-xl font-bold mb-2 text-foreground">{children}</h1>,
-                      h2: ({children}: any) => <h2 className="text-lg font-bold mb-2 text-foreground">{children}</h2>,
-                      h3: ({children}: any) => <h3 className="text-base font-bold mb-2 text-foreground">{children}</h3>,
-                      blockquote: ({children}: any) => (
-                        <blockquote className="border-l-4 border-primary pl-3 italic text-muted-foreground my-2">
-                          {children}
-                        </blockquote>
-                      ),
-                      a: ({children, href}: any) => (
-                        <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-                          {children}
-                        </a>
-                      ),
-                      table: ({children}: any) => (
-                        <div className="overflow-x-auto my-2">
-                          <table className="min-w-full border-collapse border border-primary/30">
-                            {children}
-                          </table>
-                        </div>
-                      ),
-                      th: ({children}: any) => (
-                        <th className="border border-primary/30 px-3 py-2 bg-primary/10 font-semibold text-left text-foreground">
-                          {children}
-                        </th>
-                      ),
-                      td: ({children}: any) => (
-                        <td className="border border-primary/30 px-3 py-2 text-foreground">
-                          {children}
-                        </td>
-                      ),
-                    }}
-                  >
+                <div className="prose prose-sm max-w-none mt-3">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {streamingMessage}
                   </ReactMarkdown>
                 </div>
               )}
-              {showReasoning && currentReasoningSteps.length > 0 && renderReasoningChain(currentReasoningSteps)}
-              <div className="mt-2 flex items-center space-x-2">
-                {thinkingStatus && (
-                  <div className="flex items-center space-x-2">
-                    <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full"></div>
-                    <span className="animate-pulse text-xs text-primary font-semibold">{thinkingStatus}</span>
-                  </div>
-                )}
-                {!thinkingStatus && streamingMessage && (
-                  <div className="animate-pulse text-xs text-muted-foreground">Generating response...</div>
-                )}
-                {showReasoning && currentReasoningSteps.length > 0 && (
-                  <span className="text-xs text-primary font-semibold">
-                    ({currentReasoningSteps.length} steps)
-                  </span>
-                )}
-              </div>
             </div>
           </div>
         )}

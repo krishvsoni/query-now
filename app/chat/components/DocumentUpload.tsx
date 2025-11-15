@@ -165,7 +165,7 @@ export default function DocumentUpload({ onUploadComplete, onUploadStart }: Docu
           <div className="text-sm text-foreground">
             <p className="font-semibold">{success}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              You can now ask questions about this document in the chat!
+              Wait for pipeline to complete before chatting with your document.
             </p>
           </div>
         </div>

@@ -15,8 +15,18 @@ let isConnected = false;
 
 export async function getRedisClient() {
   if (!isConnected) {
-    await client.connect();
-    isConnected = true;
+    try {
+      if (!client.isOpen) {
+        await client.connect();
+      }
+      isConnected = true;
+    } catch (error) {
+      if ((error as Error).message.includes('Socket already opened')) {
+        isConnected = true;
+      } else {
+        throw error;
+      }
+    }
   }
   return client;
 }
