@@ -54,7 +54,7 @@ export class ReasoningEngine {
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'thought',
-      content: `Analyzing query: "${context.query}"`,
+      content: `Breaking down your question...`,
       timestamp: Date.now()
     }, steps, onProgress);
     
@@ -63,7 +63,7 @@ export class ReasoningEngine {
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'thought',
-      content: `Created execution plan with ${plan.steps.length} steps. Complexity: ${plan.complexity}. Reasoning: ${plan.reasoning}`,
+      content: `Planning search strategy (${plan.steps.length} steps)`,
       timestamp: Date.now(),
       metadata: { plan }
     }, steps, onProgress);
@@ -71,7 +71,7 @@ export class ReasoningEngine {
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'action',
-      content: `Executing query plan...`,
+      content: `Searching your documents...`,
       timestamp: Date.now()
     }, steps, onProgress);
     
@@ -94,7 +94,7 @@ export class ReasoningEngine {
       yield* this.emitReasoningStep({
         id: `step-${steps.length + 1}`,
         type: 'observation',
-        content: `Tool "${result.tool}" completed. Found ${Array.isArray(result.data) ? result.data.length : 1} results with ${(result.confidence * 100).toFixed(0)}% confidence.`,
+        content: `Found ${Array.isArray(result.data) ? result.data.length : 1} relevant ${Array.isArray(result.data) && result.data.length === 1 ? 'result' : 'results'}`,
         timestamp: Date.now(),
         confidence: result.confidence
       }, steps, onProgress);
@@ -103,7 +103,7 @@ export class ReasoningEngine {
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'thought',
-      content: `Synthesizing information from ${toolResults.length} tool results...`,
+      content: `Connecting information from multiple sources...`,
       timestamp: Date.now()
     }, steps, onProgress);
     
@@ -116,7 +116,7 @@ export class ReasoningEngine {
       yield* this.emitReasoningStep({
         id: `step-${steps.length + 1}`,
         type: 'thought',
-        content: `Refining answer (iteration ${iterationCount}). Current confidence: ${(currentConfidence * 100).toFixed(0)}%`,
+        content: `Improving answer quality...`,
         timestamp: Date.now(),
         confidence: currentConfidence
       }, steps, onProgress);
@@ -131,7 +131,7 @@ export class ReasoningEngine {
         yield* this.emitReasoningStep({
           id: `step-${steps.length + 1}`,
           type: 'thought',
-          content: `Identified improvement areas: ${refinementNeeded.reason}`,
+          content: `Exploring additional context...`,
           timestamp: Date.now()
         }, steps, onProgress);
         
@@ -139,7 +139,7 @@ export class ReasoningEngine {
           yield* this.emitReasoningStep({
             id: `step-${steps.length + 1}`,
             type: 'action',
-            content: `Gathering additional information: ${refinementNeeded.additionalQuery}`,
+            content: `Deep diving for more details...`,
             timestamp: Date.now()
           }, steps, onProgress);
           
@@ -173,7 +173,7 @@ export class ReasoningEngine {
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'conclusion',
-      content: `Reached conclusion with ${(currentConfidence * 100).toFixed(0)}% confidence after ${iterationCount} refinement iterations.`,
+      content: `Crafting your personalized answer...`,
       timestamp: Date.now(),
       confidence: currentConfidence
     }, steps, onProgress);
