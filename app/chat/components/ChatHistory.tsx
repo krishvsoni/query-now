@@ -76,6 +76,25 @@ export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHist
     }
   };
 
+  const cleanTitle = (text: string): string => {
+    let cleaned = text
+      .replace(/^#{1,6}\s+/gm, '') // Remove heading markers
+      .replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
+      .replace(/\*(.+?)\*/g, '$1') // Remove italic
+      .replace(/`(.+?)`/g, '$1') // Remove code backticks
+      .replace(/\[(.+?)\]\(.+?\)/g, '$1') // Remove links, keep text
+      .replace(/^[-*+]\s+/gm, '') // Remove list markers
+      .replace(/^>\s+/gm, '') // Remove blockquotes
+      .trim();
+    
+    // Truncate if too long
+    if (cleaned.length > 60) {
+      cleaned = cleaned.substring(0, 60) + '...';
+    }
+    
+    return cleaned || 'Untitled Chat';
+  };
+
   const formatDate = (timestamp: string) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -145,7 +164,7 @@ export default function ChatHistory({ isOpen, onClose, onLoadSession }: ChatHist
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">
-                      {session.lastMessage}
+                      {cleanTitle(session.lastMessage)}
                     </p>
                     <div className="flex items-center mt-1 text-xs text-muted-foreground space-x-2">
                       <span>{formatDate(session.timestamp)}</span>
