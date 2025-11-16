@@ -4,6 +4,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, FileText, Lightbulb, Cog, Eye, CheckCircle, User, Zap, Search, Globe, Link, BarChart3, Sparkles, CheckCheck, Target, Brain } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import ResponseGraph from './ResponseGraph';
 import ProfileDropdown from './ProfileDropdown';
 
@@ -60,7 +63,7 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
   const [streamingMessage, setStreamingMessage] = useState('');
   const [currentReasoningSteps, setCurrentReasoningSteps] = useState<ReasoningStep[]>([]);
   const [currentKnowledgeGraph, setCurrentKnowledgeGraph] = useState<any>(null);
-  const [showReasoning, setShowReasoning] = useState(false);
+  const [showReasoning, setShowReasoning] = useState(true);
   const [useAdvancedReasoning, setUseAdvancedReasoning] = useState(false);
   const [thinkingStatus, setThinkingStatus] = useState('');
   const [progressLogs, setProgressLogs] = useState<ProgressLog[]>([]);
@@ -214,7 +217,13 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                 const parsed = JSON.parse(data);
                 console.log('Parsed chunk:', parsed.type, parsed);
                 
-                if (parsed.type === 'thinking') {
+                if (parsed.type === 'status') {
+                  setProgressLogs(prev => [...prev, { type: 'target', message: parsed.message || 'Processing', timestamp: Date.now() }]);
+                } else if (parsed.type === 'cache_check') {
+                  setProgressLogs(prev => [...prev, { type: 'zap', message: parsed.message || 'Checking cache', timestamp: Date.now() }]);
+                } else if (parsed.type === 'graph_build') {
+                  setProgressLogs(prev => [...prev, { type: 'chart', message: parsed.message || 'Building knowledge graph', timestamp: Date.now() }]);
+                } else if (parsed.type === 'thinking') {
                   const msg = parsed.message || 'Thinking...';
                   setThinkingStatus(msg);
                   // Replace last progress log if it's also a thinking type, otherwise add new
@@ -253,17 +262,12 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                   setProgressLogs(prev => [...prev, friendlyTool]);
                 } else if (parsed.type === 'refinement') {
                   setProgressLogs(prev => [...prev, { type: 'sparkles', message: 'Refining response', timestamp: Date.now() }]);
-                } else if (parsed.type === 'cache_check') {
-                  setProgressLogs(prev => [...prev, { type: 'zap', message: parsed.message || 'Checking cache', timestamp: Date.now() }]);
-                } else if (parsed.type === 'graph_build') {
-                  setProgressLogs(prev => [...prev, { type: 'chart', message: parsed.message || 'Building knowledge graph', timestamp: Date.now() }]);
-                } else if (parsed.type === 'status') {
-                  setProgressLogs(prev => [...prev, { type: 'target', message: parsed.message || 'Processing', timestamp: Date.now() }]);
                 } else if (parsed.type === 'metadata') {
                   // Metadata received, just log it
                   console.log('Metadata received:', parsed);
                 }
               } catch (parseError) {
+                console.error('Error parsing SSE data:', parseError, 'Data:', data);
               }
             }
           }
@@ -491,7 +495,8 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
               {message.role === 'assistant' ? (
                 <div className="prose prose-sm max-w-none">
                   <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
                     components={{
                       code: ({node, inline, className, children, ...props}: any) => {
                         return inline ? (
@@ -696,7 +701,10 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                     <h4 className="text-sm font-semibold text-foreground">Generating Response</h4>
                   </div>
                   <div className="prose prose-sm max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                    >
                       {streamingMessage}
                     </ReactMarkdown>
                   </div>

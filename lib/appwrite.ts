@@ -292,7 +292,7 @@ export async function getChatHistory(
   try {
     const queries: string[] = [
       Query.equal('userId', userId),
-      Query.orderDesc('createdAt'),
+      Query.orderAsc('createdAt'), // Changed to ascending order for proper chat display
       Query.limit(limit)
     ];
     if (sessionId) {
