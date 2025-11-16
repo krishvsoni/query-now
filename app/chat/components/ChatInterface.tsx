@@ -22,6 +22,13 @@ interface Message {
   };
 }
 
+interface ProgressLog {
+  type: string;
+  message: string;
+  timestamp: number;
+  icon?: string;
+}
+
 interface Source {
   type: 'vector' | 'graph';
   fileName: string;
@@ -53,11 +60,12 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
   const [streamingMessage, setStreamingMessage] = useState('');
   const [currentReasoningSteps, setCurrentReasoningSteps] = useState<ReasoningStep[]>([]);
   const [currentKnowledgeGraph, setCurrentKnowledgeGraph] = useState<any>(null);
-  const [showReasoning, setShowReasoning] = useState(true);
-  const [useAdvancedReasoning, setUseAdvancedReasoning] = useState(true);
+  const [showReasoning, setShowReasoning] = useState(false);
+  const [useAdvancedReasoning, setUseAdvancedReasoning] = useState(false);
   const [thinkingStatus, setThinkingStatus] = useState('');
-  const [progressLogs, setProgressLogs] = useState<Array<{ type: string; message: string }>>([]);
+  const [progressLogs, setProgressLogs] = useState<ProgressLog[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const progressLogsEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const [showResponseGraph, setShowResponseGraph] = useState(false);
@@ -68,9 +76,19 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const scrollProgressLogs = () => {
+    progressLogsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   useEffect(() => {
     scrollToBottom();
-  }, [messages, streamingMessage, progressLogs, thinkingStatus]);
+  }, [messages, streamingMessage]);
+
+  useEffect(() => {
+    if (progressLogs.length > 0 || thinkingStatus) {
+      scrollProgressLogs();
+    }
+  }, [progressLogs, thinkingStatus]);
 
   useEffect(() => {
     if (loadedMessages && loadedMessages.length > 0) {
@@ -203,20 +221,20 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                   setProgressLogs(prev => {
                     const lastLog = prev[prev.length - 1];
                     if (lastLog && lastLog.type === 'brain') {
-                      return [...prev.slice(0, -1), { type: 'brain', message: msg.replace(/🔍\s*/, '') }];
+                      return [...prev.slice(0, -1), { type: 'brain', message: msg.replace(/🔍\s*/, ''), timestamp: Date.now() }];
                     }
-                    return [...prev, { type: 'brain', message: msg.replace(/🔍\s*/, '') }];
+                    return [...prev, { type: 'brain', message: msg.replace(/🔍\s*/, ''), timestamp: Date.now() }];
                   });
                 } else if (parsed.type === 'chunk' && parsed.content) {
                   assistantMessage += parsed.content;
                   setStreamingMessage(assistantMessage);
                   if (thinkingStatus) {
-                    setProgressLogs(prev => [...prev, { type: 'checkcheck', message: 'Starting to generate response' }]);
+                    setProgressLogs(prev => [...prev, { type: 'checkcheck', message: 'Starting to generate response', timestamp: Date.now() }]);
                     setThinkingStatus('');
                   }
                 } else if (parsed.type === 'sources') {
                   sources = parsed.sources || [];
-                  setProgressLogs(prev => [...prev, { type: 'check', message: `Found ${sources.length} relevant sources` }]);
+                  setProgressLogs(prev => [...prev, { type: 'check', message: `Found ${sources.length} relevant sources`, timestamp: Date.now() }]);
                 } else if (parsed.type === 'reasoning') {
                   reasoningSteps.push(parsed.step);
                   setCurrentReasoningSteps([...reasoningSteps]);
@@ -225,16 +243,25 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
                                          stepType === 'action' ? 'Executing search' :
                                          stepType === 'observation' ? 'Reviewing results' :
                                          stepType === 'conclusion' ? 'Drawing conclusions' : 'Processing';
-                  setProgressLogs(prev => [...prev, { type: stepType, message: friendlyMessage }]);
+                  setProgressLogs(prev => [...prev, { type: stepType, message: friendlyMessage, timestamp: Date.now() }]);
                 } else if (parsed.type === 'tool') {
                   const toolName = parsed.tool.tool;
-                  const friendlyTool = toolName === 'vector_search' ? { type: 'search', message: 'Searching documents' } :
-                                      toolName === 'entity_search' ? { type: 'globe', message: 'Finding related concepts' } :
-                                      toolName === 'relationship_path' ? { type: 'link', message: 'Mapping connections' } :
-                                      toolName === 'graph_traversal' ? { type: 'chart', message: 'Exploring knowledge graph' } : { type: 'cog', message: `Running ${toolName}` };
+                  const friendlyTool = toolName === 'vector_search' ? { type: 'search', message: 'Searching documents', timestamp: Date.now() } :
+                                      toolName === 'entity_search' ? { type: 'globe', message: 'Finding related concepts', timestamp: Date.now() } :
+                                      toolName === 'relationship_path' ? { type: 'link', message: 'Mapping connections', timestamp: Date.now() } :
+                                      toolName === 'graph_traversal' ? { type: 'chart', message: 'Exploring knowledge graph', timestamp: Date.now() } : { type: 'cog', message: `Running ${toolName}`, timestamp: Date.now() };
                   setProgressLogs(prev => [...prev, friendlyTool]);
                 } else if (parsed.type === 'refinement') {
-                  setProgressLogs(prev => [...prev, { type: 'sparkles', message: 'Refining response' }]);
+                  setProgressLogs(prev => [...prev, { type: 'sparkles', message: 'Refining response', timestamp: Date.now() }]);
+                } else if (parsed.type === 'cache_check') {
+                  setProgressLogs(prev => [...prev, { type: 'zap', message: parsed.message || 'Checking cache', timestamp: Date.now() }]);
+                } else if (parsed.type === 'graph_build') {
+                  setProgressLogs(prev => [...prev, { type: 'chart', message: parsed.message || 'Building knowledge graph', timestamp: Date.now() }]);
+                } else if (parsed.type === 'status') {
+                  setProgressLogs(prev => [...prev, { type: 'target', message: parsed.message || 'Processing', timestamp: Date.now() }]);
+                } else if (parsed.type === 'metadata') {
+                  // Metadata received, just log it
+                  console.log('Metadata received:', parsed);
                 }
               } catch (parseError) {
               }
@@ -571,76 +598,108 @@ export default function ChatInterface({ onShowGraph, selectedDocuments = [], loa
           </div>
         ))}
 
-        {(isLoading && !messages.find(m => m.role === 'assistant' && messages.indexOf(m) === messages.length - 1)) && (
+        {isLoading && (
           <div className="flex justify-start">
-            <div className="max-w-2xl px-4 py-3 rounded-xl border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md text-foreground">
+            <div className="max-w-3xl w-full px-5 py-4 rounded-xl border border-primary/30 bg-gradient-to-br from-card/60 to-card/20 backdrop-blur-md text-foreground shadow-lg">
               
               {/* Show progress logs if any */}
               {progressLogs.length > 0 ? (
-                <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                  {progressLogs.map((log, idx) => {
-                    const IconComponent = 
-                      log.type === 'thought' ? Brain :
-                      log.type === 'action' ? Cog :
-                      log.type === 'observation' ? Eye :
-                      log.type === 'conclusion' ? CheckCircle :
-                      log.type === 'search' ? Search :
-                      log.type === 'globe' ? Globe :
-                      log.type === 'link' ? Link :
-                      log.type === 'chart' ? BarChart3 :
-                      log.type === 'sparkles' ? Sparkles :
-                      log.type === 'check' ? CheckCircle :
-                      log.type === 'checkcheck' ? CheckCheck :
-                      log.type === 'target' ? Target :
-                      log.type === 'brain' ? Brain : Lightbulb;
-                    
-                    return (
-                      <div 
-                        key={idx} 
-                        className="flex items-center space-x-2 text-xs animate-fade-in"
-                        style={{ 
-                          animation: `fadeIn 0.3s ease-in`,
-                          animationDelay: `${idx * 0.05}s`,
-                          opacity: idx === progressLogs.length - 1 ? 1 : 0.6
-                        }}
-                      >
-                        <IconComponent className={`w-3.5 h-3.5 flex-shrink-0 ${
-                          idx === progressLogs.length - 1 ? 'text-primary' : 'text-muted-foreground/60'
-                        }`} />
-                        <span className={idx === progressLogs.length - 1 ? 'text-foreground font-medium' : 'text-muted-foreground/70'}>
-                          {log.message}
-                        </span>
-                      </div>
-                    );
-                  })}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-primary/20">
+                    <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-primary animate-pulse" />
+                      Processing Query
+                    </h4>
+                    <span className="text-xs text-muted-foreground">{progressLogs.length} steps</span>
+                  </div>
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+                    {progressLogs.map((log, idx) => {
+                      const IconComponent = 
+                        log.type === 'thought' ? Brain :
+                        log.type === 'action' ? Cog :
+                        log.type === 'observation' ? Eye :
+                        log.type === 'conclusion' ? CheckCircle :
+                        log.type === 'search' ? Search :
+                        log.type === 'globe' ? Globe :
+                        log.type === 'link' ? Link :
+                        log.type === 'chart' ? BarChart3 :
+                        log.type === 'sparkles' ? Sparkles :
+                        log.type === 'check' ? CheckCircle :
+                        log.type === 'checkcheck' ? CheckCheck :
+                        log.type === 'target' ? Target :
+                        log.type === 'zap' ? Zap :
+                        log.type === 'brain' ? Brain : Lightbulb;
+                      
+                      const isLatest = idx === progressLogs.length - 1;
+                      
+                      return (
+                        <div 
+                          key={`${log.timestamp}-${idx}`}
+                          className={`flex items-start space-x-3 py-2 px-3 rounded-lg transition-all duration-300 ${
+                            isLatest ? 'bg-primary/10 border border-primary/30' : 'bg-transparent'
+                          }`}
+                          style={{ 
+                            animation: 'slideIn 0.4s ease-out',
+                            animationFillMode: 'backwards',
+                            animationDelay: `${Math.min(idx * 0.08, 1)}s`
+                          }}
+                        >
+                          <div className={`flex-shrink-0 mt-0.5 ${
+                            isLatest ? 'animate-pulse' : ''
+                          }`}>
+                            <IconComponent className={`w-4 h-4 ${
+                              isLatest ? 'text-primary' : 'text-muted-foreground/60'
+                            }`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className={`text-sm block ${
+                              isLatest ? 'text-foreground font-medium' : 'text-muted-foreground/80'
+                            }`}>
+                              {log.message}
+                            </span>
+                            {isLatest && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <div className="w-1 h-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                <div className="w-1 h-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                <div className="w-1 h-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                              </div>
+                            )}
+                          </div>
+                          {isLatest && (
+                            <div className="flex-shrink-0">
+                              <div className="relative w-4 h-4">
+                                <div className="absolute inset-0 animate-spin border-2 border-primary border-t-transparent rounded-full"></div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div ref={progressLogsEndRef} />
+                  </div>
                 </div>
               ) : (
-                <div className="flex items-center space-x-3 p-3">
+                <div className="flex items-center space-x-3 p-4">
                   <div className="relative">
-                    <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
-                    <div className="absolute inset-0 animate-ping h-5 w-5 border-2 border-primary/30 rounded-full"></div>
+                    <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full"></div>
+                    <div className="absolute inset-0 animate-ping h-6 w-6 border-2 border-primary/20 rounded-full"></div>
                   </div>
-                  <span className="text-sm text-primary font-medium">Processing your query...</span>
-                </div>
-              )}
-              
-              {/* Show thinking status if present */}
-              {thinkingStatus && (
-                <div className="mt-3 flex items-center space-x-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
-                  <div className="relative">
-                    <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
-                    <div className="absolute inset-0 animate-ping h-5 w-5 border-2 border-primary/30 rounded-full"></div>
-                  </div>
-                  <span className="text-sm text-primary font-medium">{thinkingStatus}</span>
+                  <span className="text-sm text-primary font-semibold">Initializing query processing...</span>
                 </div>
               )}
               
               {/* Show streaming message if present */}
               {streamingMessage && (
-                <div className="prose prose-sm max-w-none mt-3">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {streamingMessage}
-                  </ReactMarkdown>
+                <div className="mt-4 pt-4 border-t border-primary/20">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+                    <h4 className="text-sm font-semibold text-foreground">Generating Response</h4>
+                  </div>
+                  <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {streamingMessage}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               )}
             </div>

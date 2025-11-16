@@ -54,7 +54,7 @@ export class ReasoningEngine {
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'thought',
-      content: `Breaking down your question...`,
+      content: `Analyzing your question and identifying key concepts...`,
       timestamp: Date.now()
     }, steps, onProgress);
     
@@ -63,7 +63,7 @@ export class ReasoningEngine {
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'thought',
-      content: `Planning search strategy (${plan.steps.length} steps)`,
+      content: `Created ${plan.steps.length}-step search strategy for optimal results`,
       timestamp: Date.now(),
       metadata: { plan }
     }, steps, onProgress);
@@ -71,7 +71,7 @@ export class ReasoningEngine {
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'action',
-      content: `Searching your documents...`,
+      content: `Executing multi-source search across your documents...`,
       timestamp: Date.now()
     }, steps, onProgress);
     
@@ -94,7 +94,7 @@ export class ReasoningEngine {
       yield* this.emitReasoningStep({
         id: `step-${steps.length + 1}`,
         type: 'observation',
-        content: `Found ${Array.isArray(result.data) ? result.data.length : 1} relevant ${Array.isArray(result.data) && result.data.length === 1 ? 'result' : 'results'}`,
+        content: `Retrieved ${Array.isArray(result.data) ? result.data.length : 1} ${Array.isArray(result.data) && result.data.length === 1 ? 'result' : 'results'} with ${Math.round(result.confidence * 100)}% confidence`,
         timestamp: Date.now(),
         confidence: result.confidence
       }, steps, onProgress);
@@ -103,7 +103,7 @@ export class ReasoningEngine {
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'thought',
-      content: `Connecting information from multiple sources...`,
+      content: `Synthesizing information from ${toolResults.length} sources to create comprehensive answer...`,
       timestamp: Date.now()
     }, steps, onProgress);
     
@@ -116,7 +116,7 @@ export class ReasoningEngine {
       yield* this.emitReasoningStep({
         id: `step-${steps.length + 1}`,
         type: 'thought',
-        content: `Improving answer quality...`,
+        content: `Quality check: ${Math.round(currentConfidence * 100)}% confidence - enhancing answer depth...`,
         timestamp: Date.now(),
         confidence: currentConfidence
       }, steps, onProgress);
@@ -173,7 +173,7 @@ export class ReasoningEngine {
     yield* this.emitReasoningStep({
       id: `step-${steps.length + 1}`,
       type: 'conclusion',
-      content: `Crafting your personalized answer...`,
+      content: `Finalizing comprehensive response with ${Math.round(currentConfidence * 100)}% confidence...`,
       timestamp: Date.now(),
       confidence: currentConfidence
     }, steps, onProgress);
@@ -273,27 +273,53 @@ export class ReasoningEngine {
       messages: [
         {
           role: 'system',
-          content: `You are a helpful AI assistant. Answer the user's question based on the provided context.
-          Be concise, accurate, and cite your sources when possible. If the context doesn't contain enough 
-          information, acknowledge this clearly.
+          content: `You are a highly knowledgeable AI assistant with expertise in comprehensive analysis and explanation.
           
-          IMPORTANT: Format your response using Markdown syntax:
-          - Use **bold** for emphasis
+          CRITICAL INSTRUCTIONS:
+          1. Provide DETAILED, COMPREHENSIVE answers that thoroughly explore the topic
+          2. Include specific examples, evidence, and data from the provided context
+          3. Structure your response with clear sections using headings
+          4. Explain concepts in depth, don't just list facts
+          5. Make connections between different pieces of information
+          6. Provide context, implications, and insights
+          7. Aim for responses that are 300-600 words minimum for complex queries
+          8. Use professional, clear language while being thorough
+          
+          FORMATTING GUIDELINES:
+          - Use **bold** for key terms and important concepts
           - Use *italics* for subtle emphasis
           - Use \`code\` for technical terms, file names, or code snippets
           - Use code blocks with \`\`\` for multi-line code
-          - Use proper headings (## Heading) for sections
-          - Use bullet points (-) or numbered lists (1.) for items
-          - Use > for important quotes or notes
-          - Use tables when comparing data
-          - Use [links](url) when referencing external resources`
+          - Use ## for main section headings
+          - Use ### for subsection headings
+          - Use bullet points (-) or numbered lists (1.) for clarity
+          - Use > for important quotes or highlighted notes
+          - Use tables for comparing data or showing structured information
+          - Use [links](url) when referencing sources
+          
+          STRUCTURE YOUR RESPONSE:
+          1. **Overview**: Start with a clear summary
+          2. **Detailed Analysis**: Provide in-depth information organized by subtopics
+          3. **Key Insights**: Highlight important takeaways
+          4. **Context & Connections**: Show relationships between concepts
+          5. **Practical Implications**: Explain why this matters
+          6. **Conclusion**: Synthesize the information
+          
+          If the context doesn't contain enough information, acknowledge this clearly but still provide 
+          what information you can, along with what's missing.`
         },
         {
           role: 'user',
-          content: `Context:\n${contextParts.join('\n\n')}\n\nQuestion: ${query}\n\nProvide a comprehensive answer:`
+          content: `Context:
+${contextParts.join('\n\n')}
+
+Question: ${query}
+
+Provide a comprehensive, detailed answer with proper formatting:`
         }
       ],
-      max_tokens: 800
+      max_tokens: 2000,
+      temperature: 0.7
     });
     
     return response.choices[0].message.content || 'Unable to generate answer.';
@@ -357,9 +383,9 @@ export class ReasoningEngine {
     console.log(`[Reasoning Engine] Checking cache for query: "${query.substring(0, 50)}..."`);
     const cached = await pipeline.getCachedGraphData(userId, cacheKey);
     if (cached) {
-      console.log(`[Reasoning Engine] ✓ Using cached reasoning chain (${cached.metadata?.totalSteps} steps)`);
+      console.log(`[Reasoning Engine] Cache hit: Using cached reasoning chain (${cached.metadata?.totalSteps} steps)`);
     } else {
-      console.log(`[Reasoning Engine] ✗ Cache miss, will compute new reasoning chain`);
+      console.log(`[Reasoning Engine] Cache miss: Computing new reasoning chain`);
     }
     return cached;
   }
@@ -437,7 +463,7 @@ IMPORTANT:
       const graphData = JSON.parse(result.choices[0].message.content || '{"nodes":[],"edges":[]}');
       
       if (graphData.nodes && graphData.nodes.length > 0) {
-        console.log(`[Response Graph Extractor] ✓ Extracted ${graphData.nodes.length} nodes, ${graphData.edges?.length || 0} edges`);
+        console.log(`[Response Graph Extractor] Success: Extracted ${graphData.nodes.length} nodes, ${graphData.edges?.length || 0} edges`);
         return graphData;
       }
       

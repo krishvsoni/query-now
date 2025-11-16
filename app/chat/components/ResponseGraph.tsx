@@ -617,13 +617,21 @@ export default function ResponseGraph({
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="w-full max-w-6xl h-[90vh] bg-card border border-border rounded-lg shadow-2xl flex flex-col overflow-hidden">
         
-        {/* Header */}
         <div className="border-b border-border bg-card p-3 sm:p-4">
           <div className="flex items-start justify-between gap-3 sm:gap-4">
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg sm:text-xl font-bold text-foreground truncate">
-                Response Knowledge Graph
-              </h2>
+                <div className="flex items-center gap-3">
+                <h2 className="text-lg sm:text-xl font-bold text-foreground truncate">
+                  Response Knowledge Graph
+                </h2>
+                <span
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800"
+                  title="Beta"
+                  aria-label="Beta"
+                >
+                  BETA
+                </span>
+                </div>
               {query && (
                 <p className="text-xs sm:text-sm text-muted-foreground truncate mt-1">
                   Related to: "{query}"
