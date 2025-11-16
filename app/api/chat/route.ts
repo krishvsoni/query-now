@@ -37,8 +37,22 @@ export async function POST(request: NextRequest) {
         async start(controller) {
           try {
             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+              type: 'status',
+              message: 'Initializing advanced reasoning engine...'
+            })}\n\n`));
+
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+              type: 'cache_check',
+              message: 'Checking cache for previous results...'
+            })}\n\n`));
+
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
               type: 'thinking',
-              message: 'Thinking...'
+              message: 'Analyzing your question...'
             })}\n\n`));
             
             const relevantEntityIds: string[] = [];
@@ -77,6 +91,14 @@ export async function POST(request: NextRequest) {
               
               if (chunk.type === 'final_answer') {
                 finalAnswer = chunk.data.answer;
+
+                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+                  type: 'status',
+                  message: 'Preparing comprehensive response...'
+                })}\n\n`));
+
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
                 const words = finalAnswer.split(' ');
                 
                 for (const word of words) {
@@ -151,6 +173,13 @@ export async function POST(request: NextRequest) {
             
             if (finalAnswer.length > 100 || relevantEntityIds.length > 0) {
               try {
+                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+                  type: 'graph_build',
+                  message: 'Building knowledge graph from response...'
+                })}\n\n`));
+
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
                 let graphToSend = null;
                 
                 if (finalAnswer.length > 100) {
@@ -179,6 +208,13 @@ export async function POST(request: NextRequest) {
                 }
                 
                 if (!graphToSend && relevantEntityIds.length > 0) {
+                  controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+                    type: 'graph_build',
+                    message: `Connecting ${relevantEntityIds.length} entities in knowledge graph...`
+                  })}\n\n`));
+
+                  await new Promise(resolve => setTimeout(resolve, 250));
+                  
                   let entityIdsForGraph = relevantEntityIds.slice(0, 10);
                   
                   queryKnowledgeGraph = await graphProcessor.buildQueryKnowledgeGraph(
@@ -193,6 +229,13 @@ export async function POST(request: NextRequest) {
                 }
                 
                 if (graphToSend && graphToSend.nodes && graphToSend.nodes.length > 0) {
+                  controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+                    type: 'graph_build',
+                    message: `Graph ready: ${graphToSend.nodes.length} nodes, ${graphToSend.edges?.length || 0} connections`
+                  })}\n\n`));
+
+                  await new Promise(resolve => setTimeout(resolve, 200));
+                  
                   const sanitizedGraph = {
                     nodes: graphToSend.nodes.map((node: any) => ({
                       id: String(node.id || ''),
@@ -275,60 +318,107 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    const queryEmbedding = await generateEmbedding(query);
-
-    const cacheKey = `query:${user.id}:${Buffer.from(query).toString('base64').slice(0, 50)}`;
-    const cachedEmbedding = await pipeline.getCachedEmbedding(cacheKey);
-    const embedding = cachedEmbedding || queryEmbedding;
-
-    if (!cachedEmbedding) {
-      await pipeline.cacheEmbedding(cacheKey, queryEmbedding, 3600);
-    }
-
-    const [vectorResults, graphResults] = await Promise.all([
-      searchSimilar(embedding, user.id, 5, filteredDocIds),
-      searchEntities(user.id, query, filteredDocIds)
-    ]);
-
-    const context: string[] = [];
-    const relevantEntityIds: string[] = [];
-
-    vectorResults.forEach((result) => {
-      if (result.score && result.score > 0.15) {
-        context.push(`[${result.metadata?.fileName}]: ${result.metadata?.content}`);
-      }
-    });
-
-    graphResults.forEach(result => {
-      context.push(`[${result.fileName}] Entity: ${result.entity.name} (${result.entity.type}): ${result.entity.description}`);
-      relevantEntityIds.push(result.entity.id);
-    });
-
-    if (relevantEntityIds.length > 0) {
-      for (const entityId of relevantEntityIds.slice(0, 3)) {
-        try {
-          const relationships = await getEntityRelationships(entityId, 1);
-          relationships.forEach(rel => {
-            context.push(`Relationship: ${rel.source.name} → ${rel.relationships[0]?.type} → ${rel.target.name}`);
-          });
-        } catch (error) {
-        }
-      }
-    }
-
-    if (context.length === 0) {
-      return NextResponse.json({
-        response: "I couldn't find relevant information in your documents to answer this question.",
-        sources: []
-      });
-    }
-
-    const responseStream = await generateStreamingResponse(query, context, conversationHistory);
-    let responseText = '';
-
+    // Non-advanced reasoning path
     const stream = new ReadableStream({
       async start(controller) {
         try {
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+            type: 'status',
+            message: 'Preparing search query...'
+          })}\n\n`));
+
+          await new Promise(resolve => setTimeout(resolve, 200));
+
+          const queryEmbedding = await generateEmbedding(query);
+
+          const cacheKey = `query:${user.id}:${Buffer.from(query).toString('base64').slice(0, 50)}`;
+          
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+            type: 'cache_check',
+            message: 'Checking cache...'
+          })}\n\n`));
+
+          const cachedEmbedding = await pipeline.getCachedEmbedding(cacheKey);
+          const embedding = cachedEmbedding || queryEmbedding;
+
+          if (!cachedEmbedding) {
+            await pipeline.cacheEmbedding(cacheKey, queryEmbedding, 3600);
+          } else {
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+              type: 'status',
+              message: 'Using cached embedding'
+            })}\n\n`));
+          }
+
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+            type: 'status',
+            message: 'Searching documents and knowledge graph...'
+          })}\n\n`));
+
+          await new Promise(resolve => setTimeout(resolve, 300));
+
+          const [vectorResults, graphResults] = await Promise.all([
+            searchSimilar(embedding, user.id, 5, filteredDocIds),
+            searchEntities(user.id, query, filteredDocIds)
+          ]);
+
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+            type: 'status',
+            message: `Found ${vectorResults.length} document matches and ${graphResults.length} entities`
+          })}\n\n`));
+
+          await new Promise(resolve => setTimeout(resolve, 200));
+
+          const context: string[] = [];
+          const relevantEntityIds: string[] = [];
+
+          vectorResults.forEach((result) => {
+            if (result.score && result.score > 0.15) {
+              context.push(`[${result.metadata?.fileName}]: ${result.metadata?.content}`);
+            }
+          });
+
+          graphResults.forEach(result => {
+            context.push(`[${result.fileName}] Entity: ${result.entity.name} (${result.entity.type}): ${result.entity.description}`);
+            relevantEntityIds.push(result.entity.id);
+          });
+
+          if (relevantEntityIds.length > 0) {
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+              type: 'status',
+              message: 'Exploring entity relationships...'
+            })}\n\n`));
+
+            for (const entityId of relevantEntityIds.slice(0, 3)) {
+              try {
+                const relationships = await getEntityRelationships(entityId, 1);
+                relationships.forEach(rel => {
+                  context.push(`Relationship: ${rel.source.name} → ${rel.relationships[0]?.type} → ${rel.target.name}`);
+                });
+              } catch (error) {
+              }
+            }
+          }
+
+          if (context.length === 0) {
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+              type: 'chunk',
+              content: "I couldn't find relevant information in your documents to answer this question."
+            })}\n\n`));
+            controller.close();
+            return;
+          }
+
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+            type: 'status',
+            message: 'Generating response...'
+          })}\n\n`));
+
+          await new Promise(resolve => setTimeout(resolve, 200));
+
+          const responseStream = await generateStreamingResponse(query, context, conversationHistory);
+          let responseText = '';
+
           for await (const chunk of responseStream) {
             const content = chunk.choices[0]?.delta?.content || '';
             if (content) {
@@ -381,8 +471,9 @@ export async function POST(request: NextRequest) {
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
       },
     });
 
