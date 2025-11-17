@@ -1,8 +1,10 @@
-# Query Now - Agentic Graph RAG as a Service
+# Query Now - MultiDoc RAG
+
+<img width="2541" height="1343" alt="image" src="https://github.com/user-attachments/assets/30d5f62f-4daf-4533-831b-76c142664e68" />
 
 
 
-An extensible, production-grade platform that unifies knowledge from multiple sources into an intelligent retrieval system. Transform unstructured documents into queryable knowledge graphs with autonomous AI agents that dynamically orchestrate vector search, graph traversal, and logical filtering for optimal information retrieval.
+### An extensible, production-grade platform that unifies knowledge from multiple sources into an intelligent retrieval system. Transform unstructured documents into queryable knowledge graphs with autonomous AI agents that dynamically orchestrate vector search, graph traversal, and logical filtering for optimal information retrieval.
 
 
 
