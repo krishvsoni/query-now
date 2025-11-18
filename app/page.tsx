@@ -103,7 +103,7 @@ export default function Home() {
           </div>
 
           <h1 className="text-6xl sm:text-7xl lg:text-8xl font-black mb-6 leading-tight text-balance">
-            Query Your
+            Search In Your
             <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-primary animate-pulse duration-3000">
               Documents
@@ -112,8 +112,8 @@ export default function Home() {
             Instantly
           </h1>
 
-          <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-3xl mx-auto leading-relaxed text-pretty">
-            Advanced multi-document RAG system. Upload, process, and have intelligent conversations with your knowledge base graph.
+          <p className="text-lg sm:text-lg text-muted-foreground mb-10 max-w-md mx-auto leading-relaxed text-pretty">
+            Upload your documents, process them, and have smart conversations with your knowledge base.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
