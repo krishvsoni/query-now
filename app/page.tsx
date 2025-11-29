@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import { DocumentProcessor } from '../components/DocumentProcessor'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
-const demoVideo = '/demo.mp4'
+const demoVideo = '/demoVideo.mp4'
 export default function Home() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [scrollY, setScrollY] = useState(0)
