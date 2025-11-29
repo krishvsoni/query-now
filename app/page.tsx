@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { DocumentProcessor } from '../components/DocumentProcessor'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
+const demoVideo = '/demo.mp4'
 export default function Home() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [scrollY, setScrollY] = useState(0)
@@ -78,6 +79,63 @@ export default function Home() {
     "Cypher Query Support"
   ]
 
+  useEffect(() => {
+    const video = document.getElementById('hero-demo-video') as HTMLVideoElement;
+
+    if (video) {
+      const segments = [
+        { start: 0,      end: 28 },    // 0–28s
+        { start: 72,     end: 77 },    // 1:12 (72s) → play for 5 seconds
+        { start: 146,    end: video.duration || 999999 } // 2:26 → end
+      ];
+
+      let currentSegment = 0;
+      let isTransitioning = false;
+
+      const playSegment = () => {
+        if (isTransitioning) return;
+        isTransitioning = true;
+        
+        const seg = segments[currentSegment];
+        video.currentTime = seg.start;
+        video.play().then(() => {
+          isTransitioning = false;
+        }).catch(() => {
+          isTransitioning = false;
+        });
+      };
+
+      const handleTimeUpdate = () => {
+        const seg = segments[currentSegment];
+        
+        if (video.currentTime >= seg.end && !isTransitioning) {
+          currentSegment++;
+          
+          if (currentSegment >= segments.length) {
+            // Loop back to start
+            currentSegment = 0;
+          }
+          
+          playSegment();
+        }
+      };
+
+      const handleLoadedMetadata = () => {
+        // Update last segment end with actual duration
+        segments[2].end = video.duration;
+        playSegment();
+      };
+
+      video.addEventListener('loadedmetadata', handleLoadedMetadata);
+      video.addEventListener('timeupdate', handleTimeUpdate);
+
+      // Cleanup
+      return () => {
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        video.removeEventListener('timeupdate', handleTimeUpdate);
+      };
+    }
+  }, [])
   return (
     <main className="min-h-screen bg-background text-foreground overflow-hidden">
       <div
@@ -243,17 +301,21 @@ export default function Home() {
               </ul>
             </div>
 
-            <div className="relative h-96 rounded-2xl border border-primary/30 bg-gradient-to-br from-card/50 to-card/20 backdrop-blur-md overflow-hidden animate-fade-in" style={{ animationDelay: '300ms' }}>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-40 h-40 rounded-full bg-gradient-to-r from-primary/30 to-accent/20 blur-3xl animate-float" />
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center text-center p-8 z-10">
-                <div>
-                  <ShipWheel  className="w-16 h-16 text-primary/40 mx-auto mb-4 animate-pulse" />
-                  <p className="text-muted-foreground font-medium">LLM Processing</p>
-                </div>
-              </div>
-            </div>
+            <div className="relative h-96 lg:h-full min-h-96 rounded-2xl border border-primary/30 bg-gradient-to-br from-card/50 to-card/20 backdrop-blur-md overflow-hidden animate-fade-in shadow-2xl" style={{ animationDelay: '300ms' }}>
+  <div className="absolute inset-0 flex items-center justify-center p-4 lg:p-5">
+    <video
+      src={demoVideo}
+      autoPlay
+      muted
+      playsInline
+      className="w-full h-full object-cover rounded-sm shadow-2xl"
+      id="hero-demo-video"
+    />
+  </div>
+
+
+  
+</div>
           </div>
         </div>
       </section>

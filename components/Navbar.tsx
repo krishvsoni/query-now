@@ -14,10 +14,9 @@ export default function Navbar() {
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/50">
             <BookOpenText className="w-6 h-6 text-primary-foreground" />
           </div>
-          <span className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Query-Now</span>
+          <span className="text-3xl font-bold font-mono bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">QueryNow</span>
         </div>
         
-        {/* Desktop Menu */}
         <div className="hidden sm:flex items-center gap-3">
           <LoginLink className="px-6 py-2.5 rounded-xl border border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/80 font-semibold transition-all duration-300 hover:shadow-md hover:shadow-primary/20">
             Sign In
@@ -27,7 +26,6 @@ export default function Navbar() {
           </RegisterLink>
         </div>
 
-        {/* Mobile Menu Button */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           className="sm:hidden p-2 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-all duration-300"

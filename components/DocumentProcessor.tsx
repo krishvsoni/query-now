@@ -50,7 +50,6 @@ const stages = [
         { name: 'Store', icon: <Database className="w-6 h-6" />, color: 'from-yellow-300' },
         { name: 'Index', icon: <List className="w-6 h-6" />, color: 'from-yellow-400' },
         { name: 'Query', icon: <Search className="w-6 h-6" />, color: 'from-yellow-300' },
-        { name: 'Done', icon: <Check className="w-6 h-6" />, color: 'from-yellow-400' }
 ]
 
     return (
