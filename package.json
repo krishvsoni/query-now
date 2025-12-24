@@ -23,7 +23,7 @@
     "mammoth": "^1.11.0",
     "multer": "^2.0.2",
     "neo4j-driver": "^6.0.0",
-    "next": "15.5.4",
+    "next": "15.5.9",
     "node-appwrite": "^20.2.1",
     "openai": "^6.3.0",
     "pdf-lib": "^1.17.1",
